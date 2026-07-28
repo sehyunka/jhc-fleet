@@ -74,6 +74,7 @@ nav button span{display:block;font-size:20px;margin-bottom:1px}
 .stat .n{font-size:20px;font-weight:800;color:var(--navy)}
 .stat .l{font-size:11px;color:var(--mut)}
 .del{color:var(--red);cursor:pointer;font-weight:700}
+@media print{header,nav,.tabs,#toast,.stat,button{display:none!important}body{padding:0;background:#fff}.card{box-shadow:none;border:none}#aBody>.card:first-child{display:none}}
 /* 로그인 화면 */
 #login{min-height:100vh;display:flex;align-items:center;justify-content:flex-end;padding:32px clamp(44px,8vw,150px) 32px 24px;
 position:relative;isolation:isolate;background:#f7fbfd url("fleet-login-bg.png") center center/cover no-repeat}
@@ -644,11 +645,49 @@ async function aBook(){
   const y=todayStr().slice(0,4);
   $("#aBody").innerHTML=`
   <div class="card"><h2>📑 업무용승용차 운행기록부 (감사·세무 제출용)</h2>
-    <p class="sub">차량별로 시트가 나뉜 엑셀을 생성합니다. 경리부서 제출용 — 법인세법 시행규칙 별지 제29호 서식 준용.</p>
+    <p class="sub">법인세법 시행규칙 별지 제29호 서식 준용 · 화면 조회 후 엑셀 저장 또는 인쇄 가능.</p>
     <div class="row"><div><label>과세기간 시작</label><input type="date" id="bF" value="${y}-01-01"></div>
     <div><label>과세기간 종료</label><input type="date" id="bT" value="${todayStr()}"></div></div>
-    <label>차량</label><select id="bV"><option value="">전체 차량 (차량별 시트)</option>${VEHICLES.map(v=>`<option value="${esc(v.plate)}">${esc(v.plate)} ${esc(v.model)}</option>`).join("")}</select>
-    <button class="btn grn" onclick="dlBook()">📥 운행기록부 엑셀 생성</button></div>`;
+    <label>차량</label><select id="bV" onchange="viewBook()"><option value="">전체 차량 (차량별 요약)</option>${VEHICLES.map(v=>`<option value="${esc(v.plate)}">${esc(v.plate)} ${esc(v.model)}</option>`).join("")}</select>
+    <div class="row">
+    <button class="btn sm teal" onclick="viewBook()">🔍 화면으로 조회</button>
+    <button class="btn sm grn" onclick="dlBook()">📥 엑셀 생성</button>
+    <button class="btn sm sec" onclick="window.print()">🖨 인쇄</button></div></div>
+  <div id="bView"></div>`;
+  viewBook();
+}
+async function viewBook(){
+  const from=$("#bF").value,to=$("#bT").value,only=$("#bV").value;
+  const trips=(await dbAll("trips")).filter(t=>t.status==="완료"&&(!from||t.date>=from)&&(!to||t.date<=to)).sort((a,b)=>(a.date+(a.startTime||"")).localeCompare(b.date+(b.startTime||"")));
+  const el=$("#bView"); if(!el) return;
+  if(only){
+    const v=VEHICLES.find(x=>x.plate===only);
+    el.innerHTML=bookTable(v,trips.filter(t=>t.vehicle===only),from,to)+`<button class="btn sec" onclick="$('#bV').value='';viewBook()">← 전체 차량 요약으로</button>`;
+    return;
+  }
+  const sums=VEHICLES.map(v=>{
+    const r=trips.filter(t=>t.vehicle===v.plate);
+    return {v,cnt:r.length,dist:r.reduce((s,t)=>s+(+t.dist||0),0),off:r.filter(t=>t.offday).length};
+  }).filter(x=>x.cnt>0);
+  const tCnt=sums.reduce((s,x)=>s+x.cnt,0), tDist=sums.reduce((s,x)=>s+x.dist,0);
+  el.innerHTML=`<div class="card"><h2>차량별 요약 (${esc(from)} ~ ${esc(to)})</h2>
+  <div class="tbl-wrap"><table><thead><tr><th>차량번호</th><th>차종</th><th>부서</th><th>운행건수</th><th>총 주행거리(km)</th><th>업무용(km)</th><th>비율</th><th>휴무일운행</th><th></th></tr></thead><tbody>
+  ${sums.map(x=>`<tr><td><b>${esc(x.v.plate)}</b></td><td>${esc(x.v.model)}</td><td>${esc(x.v.dept)}</td><td>${x.cnt}</td><td>${fmt(x.dist)}</td><td>${fmt(x.dist)}</td><td>100%</td><td>${x.off?`<span class="tag off">${x.off}건</span>`:"-"}</td>
+  <td><button class="btn sm sec" onclick="$('#bV').value='${esc(x.v.plate)}';viewBook()">기록부 보기</button></td></tr>`).join("")||"<tr><td colspan=9>해당 기간 기록 없음</td></tr>"}
+  ${sums.length?`<tr style="font-weight:800;background:#f8fafc"><td colspan=3>합계 (${sums.length}대)</td><td>${tCnt}</td><td>${fmt(tDist)}</td><td>${fmt(tDist)}</td><td>100%</td><td colspan=2></td></tr>`:""}
+  </tbody></table></div></div>`;
+}
+function bookTable(v,rows,from,to){
+  const total=rows.reduce((s,t)=>s+(+t.dist||0),0);
+  return `<div class="card book-sheet"><h2 style="text-align:center">업무용승용차 운행기록부</h2>
+  <div class="tbl-wrap"><table style="margin-bottom:8px"><tbody>
+  <tr><th>과세기간</th><td>${esc(from)} ~ ${esc(to)}</td><th>법인명</th><td>${esc(COMPANY)}</td></tr>
+  <tr><th>차종</th><td>${esc(v.model)}</td><th>자동차등록번호</th><td><b>${esc(v.plate)}</b></td></tr>
+  </tbody></table></div>
+  <div class="tbl-wrap"><table><thead><tr><th>사용일자</th><th>부서</th><th>성명</th><th>주행 전<br>계기판거리(km)</th><th>주행 후<br>계기판거리(km)</th><th>주행거리<br>(km)</th><th>업무용<br>사용거리(km)</th><th>비고</th></tr></thead><tbody>
+  ${rows.map(t=>`<tr class="${t.offday?"off":""}"><td>${esc(t.date)}</td><td>${esc(t.dept)}</td><td>${esc(t.user)}</td><td>${fmt(t.startKm)}</td><td>${fmt(t.endKm)}</td><td>${fmt(t.dist)}</td><td>${fmt(t.dist)}</td><td>${esc(t.purpose||"")}${t.offday?" <span class='tag off'>휴무일</span>":""}</td></tr>`).join("")||"<tr><td colspan=8>해당 기간 완료된 운행기록 없음</td></tr>"}
+  <tr style="font-weight:800;background:#f8fafc"><td colspan=5>과세기간 합계</td><td>${fmt(total)}</td><td>${fmt(total)}</td><td>업무사용비율 100%</td></tr>
+  </tbody></table></div></div>`;
 }
 async function dlBook(){
   const from=$("#bF").value,to=$("#bT").value,only=$("#bV").value;
