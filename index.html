@@ -75,14 +75,33 @@ nav button span{display:block;font-size:20px;margin-bottom:1px}
 .stat .l{font-size:11px;color:var(--mut)}
 .del{color:var(--red);cursor:pointer;font-weight:700}
 /* 로그인 화면 */
-#login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
-background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1440' height='900' viewBox='0 0 1440 900'><g opacity='0.5' fill='white'><ellipse cx='240' cy='130' rx='70' ry='26'/><ellipse cx='300' cy='118' rx='55' ry='22'/><ellipse cx='1130' cy='90' rx='80' ry='28'/><ellipse cx='1200' cy='102' rx='60' ry='22'/></g><g opacity='0.14' fill='%23414b5a'><rect x='40' y='500' width='90' height='220'/><rect x='150' y='440' width='120' height='280'/><rect x='290' y='530' width='80' height='190'/><rect x='1020' y='510' width='100' height='210'/><rect x='1140' y='430' width='130' height='290'/><rect x='1290' y='540' width='90' height='180'/></g><rect y='710' width='1440' height='190' fill='%23414b5a' opacity='0.16'/><line x1='0' y1='800' x2='1440' y2='800' stroke='white' stroke-width='6' stroke-dasharray='46 34' opacity='0.55'/><g opacity='0.55' transform='translate(120,690) scale(1.5)'><rect x='0' y='22' rx='13' width='156' height='36' fill='%23414b5a'/><rect x='30' y='0' rx='11' width='88' height='32' fill='%23414b5a'/><rect x='38' y='7' width='31' height='19' rx='4' fill='%23dbe4f0'/><rect x='78' y='7' width='31' height='19' rx='4' fill='%23dbe4f0'/><circle cx='38' cy='60' r='15' fill='%23323a46'/><circle cx='118' cy='60' r='15' fill='%23323a46'/><circle cx='38' cy='60' r='6' fill='%23dbe4f0'/><circle cx='118' cy='60' r='6' fill='%23dbe4f0'/></g><g opacity='0.5' transform='translate(1310,725) scale(-1.1,1.1)'><rect x='0' y='22' rx='13' width='156' height='36' fill='%2312b3a8'/><rect x='30' y='0' rx='11' width='88' height='32' fill='%2312b3a8'/><rect x='38' y='7' width='31' height='19' rx='4' fill='%23e8f7f6'/><rect x='78' y='7' width='31' height='19' rx='4' fill='%23e8f7f6'/><circle cx='38' cy='60' r='15' fill='%23323a46'/><circle cx='118' cy='60' r='15' fill='%23323a46'/><circle cx='38' cy='60' r='6' fill='%23e8f7f6'/><circle cx='118' cy='60' r='6' fill='%23e8f7f6'/></g></svg>"),linear-gradient(160deg,#eef3fa 0%,#cdd8e8 55%,#b9c8de 100%);
-background-repeat:no-repeat;background-position:bottom center;background-size:cover}
-.login-card{background:#fff;border-radius:18px;padding:36px 28px;width:100%;max-width:380px;box-shadow:0 15px 40px rgba(50,58,70,.25)}
-.login-card img{display:block;margin:0 auto 22px;max-width:220px;height:auto}
+#login{min-height:100vh;display:flex;align-items:center;justify-content:flex-end;padding:32px clamp(44px,8vw,150px) 32px 24px;
+position:relative;isolation:isolate;background:#f7fbfd url("fleet-login-bg.png") center center/cover no-repeat}
+#login::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+background:linear-gradient(90deg,rgba(255,255,255,0) 42%,rgba(255,255,255,.12) 58%,rgba(255,255,255,.48) 100%)}
+.login-card{position:relative;overflow:hidden;background:rgba(255,255,255,.93);border:1px solid rgba(255,255,255,.96);
+backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:22px;padding:34px 30px 28px;width:100%;max-width:390px;
+box-shadow:0 22px 60px rgba(53,87,111,.20),0 4px 18px rgba(25,70,96,.10)}
+.login-card::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;
+background:linear-gradient(90deg,#12b3c7 0%,#18b6aa 52%,#9bd400 100%)}
+.login-card img{display:block;margin:0 auto 12px;max-width:220px;height:auto}
+.login-kicker{text-align:center;margin:0 0 21px;color:#607588;font-size:10px;font-weight:800;letter-spacing:2.1px}
+.login-card label{color:#40566a;font-weight:700}
+.login-card input{border-color:#cfdae3;background:rgba(255,255,255,.92);transition:border-color .2s,box-shadow .2s}
+.login-card input:focus{outline:none;border-color:#12b3b3;box-shadow:0 0 0 3px rgba(18,179,179,.14)}
+.login-card .btn{background:linear-gradient(135deg,#415165 0%,#33465b 58%,#237b7d 100%)!important;
+box-shadow:0 8px 18px rgba(45,79,99,.18);letter-spacing:.8px;transition:transform .2s,box-shadow .2s}
+.login-card .btn:hover{transform:translateY(-1px);box-shadow:0 11px 22px rgba(32,104,107,.24)}
 .login-card .chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);margin-top:10px}
 .login-card .chk input{width:auto}
-.login-card .note{margin-top:18px;background:var(--navy);color:#e2e8f0;border-radius:10px;padding:12px;font-size:12px;line-height:1.6}
+.login-card .note{margin-top:18px;background:linear-gradient(135deg,#435368,#34485d);color:#edf5f7;
+border-left:4px solid #12b3b3;border-radius:11px;padding:13px 14px;font-size:12px;line-height:1.6}
+@media(max-width:800px){
+  #login{justify-content:center;align-items:flex-start;padding:clamp(28px,8vh,72px) 16px 24px;background-position:34% center}
+  #login::before{background:rgba(244,250,253,.34)}
+  .login-card{max-width:420px;padding:30px 22px 24px;border-radius:18px}
+  .login-card img{max-width:200px}
+}
 .notice-body{white-space:pre-wrap;font-size:14px;line-height:1.7;margin:10px 0;max-height:45vh;overflow-y:auto}
 </style>
 </head>
@@ -252,6 +271,7 @@ function renderLogin(msg){
   $("#login").innerHTML=`
   <div class="login-card">
     <img src="logo-h.png" alt="${COMPANY}">
+    <div class="login-kicker">CORPORATE FLEET OPERATIONS</div>
     ${msg?`<div class="banner warn">${esc(msg)}</div>`:""}
     <label>ID</label><input id="liId" value="${esc(localStorage.getItem("jhc2_saveid")||"")}" autocomplete="username">
     <label>PW</label><input id="liPw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
