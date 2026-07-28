@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#414b5a">
+<title>재현하늘창 법인차량</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--navy:#414b5a;--navy-d:#323a46;--teal:#12b3a8;--bg:#f1f5f9;--card:#fff;--txt:#0f172a;--mut:#64748b;--red:#dc2626;--grn:#16a34a;--amb:#d97706;--bd:#e2e8f0}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--txt)}
+body.inapp{padding-bottom:70px}
+header{background:var(--navy);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:10;display:none;align-items:center;justify-content:space-between}
+body.inapp header{display:flex}
+header h1{font-size:16px;font-weight:700}
+header .u{font-size:12px;display:flex;align-items:center;gap:8px}
+header .u button{background:rgba(255,255,255,.18);border:none;color:#fff;font-size:11px;padding:4px 9px;border-radius:10px;cursor:pointer}
+.badge{font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(255,255,255,.2)}
+.badge.on{background:var(--grn)}
+main{padding:14px;max-width:640px;margin:0 auto}
+.card{background:var(--card);border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.card h2{font-size:15px;margin-bottom:10px;color:var(--navy)}
+.btn{display:block;width:100%;padding:14px;border:none;border-radius:10px;background:var(--navy);color:#fff;font-size:16px;font-weight:700;cursor:pointer;margin-top:10px}
+.btn.sec{background:#fff;color:var(--navy);border:2px solid var(--navy)}
+.btn.red{background:var(--red)}
+.btn.grn{background:var(--grn)}
+.btn.teal{background:var(--teal)}
+.btn.sm{padding:8px 12px;font-size:13px;width:auto;display:inline-block;margin:4px 4px 0 0}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:12px;border:1px solid var(--bd);border-radius:8px;font-size:16px;background:#fff}
+.banner{border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:14px;font-weight:700}
+.banner.warn{background:#fef2f2;color:var(--red);border:1px solid #fecaca}
+.banner.info{background:#f0fdfa;color:#0f766e;border:1px solid #99f6e4}
+.plate{font-size:22px;font-weight:800;letter-spacing:1px}
+.sub{font-size:13px;color:var(--mut);margin-top:2px}
+.kmbig{font-size:26px;font-weight:800;color:var(--navy)}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+.vlist{display:flex;flex-direction:column;gap:8px}
+.vitem{background:#fff;border:1px solid var(--bd);border-radius:10px;padding:12px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.vitem:active{background:#f0fdfa}
+.vitem .r{text-align:right;font-size:12px;color:var(--mut)}
+.tag{font-size:11px;padding:2px 7px;border-radius:8px;font-weight:700}
+.tag.pub{background:#ccfbf1;color:#0f766e}
+.tag.prv{background:#f1f5f9;color:var(--mut)}
+.tag.off{background:#fef2f2;color:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:7px 5px;border-bottom:1px solid var(--bd);text-align:center;white-space:nowrap}
+th{background:#f8fafc;color:var(--mut);font-size:11px}
+tr.off td{background:#fef2f2}
+.tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
+.tab{padding:8px 14px;border-radius:20px;background:#fff;border:1px solid var(--bd);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+.tab.act{background:var(--navy);color:#fff;border-color:var(--navy)}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--bd);display:none;z-index:10}
+body.inapp nav{display:flex}
+nav button{flex:1;padding:9px 0 max(9px, env(safe-area-inset-bottom));border:none;background:none;font-size:11px;color:var(--mut);cursor:pointer}
+nav button.act{color:var(--navy);font-weight:800}
+nav button span{display:block;font-size:20px;margin-bottom:1px}
+.m-ok{color:var(--grn);font-weight:700}.m-warn{color:var(--amb);font-weight:700}.m-due{color:var(--red);font-weight:700}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:#fff;border-radius:16px 16px 0 0;padding:20px 16px 30px;width:100%;max-width:640px;max-height:88vh;overflow-y:auto}
+.modal h3{color:var(--navy);margin-bottom:6px}
+#toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;z-index:30;display:none;white-space:nowrap}
+.tbl-wrap{overflow-x:auto}
+.stat{display:flex;gap:8px;margin-bottom:12px}
+.stat .card{flex:1;text-align:center;margin:0;padding:12px 6px}
+.stat .n{font-size:20px;font-weight:800;color:var(--navy)}
+.stat .l{font-size:11px;color:var(--mut)}
+.del{color:var(--red);cursor:pointer;font-weight:700}
+/* 로그인 화면 */
+#login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1440' height='900' viewBox='0 0 1440 900'><g opacity='0.5' fill='white'><ellipse cx='240' cy='130' rx='70' ry='26'/><ellipse cx='300' cy='118' rx='55' ry='22'/><ellipse cx='1130' cy='90' rx='80' ry='28'/><ellipse cx='1200' cy='102' rx='60' ry='22'/></g><g opacity='0.14' fill='%23414b5a'><rect x='40' y='500' width='90' height='220'/><rect x='150' y='440' width='120' height='280'/><rect x='290' y='530' width='80' height='190'/><rect x='1020' y='510' width='100' height='210'/><rect x='1140' y='430' width='130' height='290'/><rect x='1290' y='540' width='90' height='180'/></g><rect y='710' width='1440' height='190' fill='%23414b5a' opacity='0.16'/><line x1='0' y1='800' x2='1440' y2='800' stroke='white' stroke-width='6' stroke-dasharray='46 34' opacity='0.55'/><g opacity='0.55' transform='translate(120,690) scale(1.5)'><rect x='0' y='22' rx='13' width='156' height='36' fill='%23414b5a'/><rect x='30' y='0' rx='11' width='88' height='32' fill='%23414b5a'/><rect x='38' y='7' width='31' height='19' rx='4' fill='%23dbe4f0'/><rect x='78' y='7' width='31' height='19' rx='4' fill='%23dbe4f0'/><circle cx='38' cy='60' r='15' fill='%23323a46'/><circle cx='118' cy='60' r='15' fill='%23323a46'/><circle cx='38' cy='60' r='6' fill='%23dbe4f0'/><circle cx='118' cy='60' r='6' fill='%23dbe4f0'/></g><g opacity='0.5' transform='translate(1310,725) scale(-1.1,1.1)'><rect x='0' y='22' rx='13' width='156' height='36' fill='%2312b3a8'/><rect x='30' y='0' rx='11' width='88' height='32' fill='%2312b3a8'/><rect x='38' y='7' width='31' height='19' rx='4' fill='%23e8f7f6'/><rect x='78' y='7' width='31' height='19' rx='4' fill='%23e8f7f6'/><circle cx='38' cy='60' r='15' fill='%23323a46'/><circle cx='118' cy='60' r='15' fill='%23323a46'/><circle cx='38' cy='60' r='6' fill='%23e8f7f6'/><circle cx='118' cy='60' r='6' fill='%23e8f7f6'/></g></svg>"),linear-gradient(160deg,#eef3fa 0%,#cdd8e8 55%,#b9c8de 100%);
+background-repeat:no-repeat;background-position:bottom center;background-size:cover}
+.login-card{background:#fff;border-radius:18px;padding:36px 28px;width:100%;max-width:380px;box-shadow:0 15px 40px rgba(50,58,70,.25)}
+.login-card img{display:block;margin:0 auto 22px;max-width:220px;height:auto}
+.login-card .chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);margin-top:10px}
+.login-card .chk input{width:auto}
+.login-card .note{margin-top:18px;background:var(--navy);color:#e2e8f0;border-radius:10px;padding:12px;font-size:12px;line-height:1.6}
+.notice-body{white-space:pre-wrap;font-size:14px;line-height:1.7;margin:10px 0;max-height:45vh;overflow-y:auto}
+</style>
+</head>
+<body>
+<div id="login"></div>
+<header><h1>🚗 재현하늘창 법인차량</h1><div class="u"><span id="mode" class="badge"></span><span id="uName"></span><button onclick="logout()">로그아웃</button></div></header>
+<main id="app"></main>
+<nav id="navbar"></nav>
+<div id="toast"></div>
+<div id="modal-root"></div>
+
+<script>
+/* ═══════════ 초기 데이터 ═══════════ */
+/* 차량 (법인차량 현황.xlsx 2026.07 기준 · 회장님/사장님 차량 제외) */
+const SEED_VEHICLES=[
+{plate:"19노8679",model:"EV9",dept:"부사장실",type:"전용",cat:"법인"},
+{plate:"810로7971",model:"스타리아 3밴",dept:"품질/AS팀",type:"전용",cat:"법인"},
+{plate:"811구7817",model:"스타리아 3밴",dept:"품질/AS팀",type:"전용",cat:"법인"},
+{plate:"311수5686",model:"셀토스",dept:"샤시영업본부",type:"전용",cat:"법인"},
+{plate:"383무5247",model:"셀토스",dept:"샤시영업본부",type:"전용",cat:"법인"},
+{plate:"228루8048",model:"셀토스",dept:"샤시영업본부",type:"전용",cat:"법인"},
+{plate:"231누5261",model:"셀토스",dept:"샤시영업본부",type:"전용",cat:"법인"},
+{plate:"87더0991",model:"봉고III 1톤",dept:"샤시영업본부(부산)",type:"전용",cat:"법인"},
+{plate:"83조8150",model:"마이티(3.5t)",dept:"완성창",type:"전용",cat:"법인"},
+{plate:"83조3874",model:"마이티(2.5t)",dept:"완성창",type:"전용",cat:"법인"},
+{plate:"87더0462",model:"봉고 1톤",dept:"목창호생산관리팀",type:"전용",cat:"법인"},
+{plate:"89오0759",model:"마이티(3.5t)",dept:"물류팀",type:"전용",cat:"법인"},
+{plate:"289구8972",model:"K5",dept:"영업본부",type:"전용",cat:"법인"},
+{plate:"123가8358",model:"K3",dept:"영업본부",type:"전용",cat:"법인"},
+{plate:"163서5541",model:"K3",dept:"영업본부",type:"전용",cat:"법인"},
+{plate:"366러6790",model:"K3",dept:"영업본부",type:"전용",cat:"법인"},
+{plate:"141서6680",model:"K3",dept:"기획홍보실",type:"공용",cat:"법인"},
+{plate:"233소1816",model:"K3",dept:"본사 공용",type:"공용",cat:"법인"},
+{plate:"274로8332",model:"K3",dept:"본사 공용",type:"공용",cat:"법인"},
+{plate:"87더0976",model:"봉고III 1톤",dept:"물류팀",type:"공용",cat:"법인"},
+{plate:"80모3572",model:"봉고 1톤 전기",dept:"유리사업부",type:"공용",cat:"법인"},
+{plate:"80조5105",model:"스타리아 3밴",dept:"이천공장",type:"공용",cat:"법인"},
+{plate:"156하5720",model:"K5",dept:"본사 공용",type:"공용",cat:"렌트"},
+{plate:"195하2090",model:"K3",dept:"영업본부",type:"전용",cat:"렌트"},
+{plate:"195하6441",model:"K3",dept:"완성창",type:"전용",cat:"렌트"},
+{plate:"195하8557",model:"K3",dept:"샤시영업본부",type:"전용",cat:"렌트"},
+{plate:"196하2581",model:"K3",dept:"영업본부",type:"전용",cat:"렌트"},
+{plate:"196호8904",model:"K5 HEV",dept:"영업본부",type:"전용",cat:"렌트"},
+{plate:"196호8905",model:"K5 HEV",dept:"영업본부",type:"전용",cat:"렌트"},
+{plate:"196호8906",model:"K5 HEV",dept:"샤시영업본부",type:"전용",cat:"렌트"},
+{plate:"177호7301",model:"K3",dept:"영업본부",type:"전용",cat:"렌트"},
+{plate:"189호1131",model:"셀토스",dept:"영업본부",type:"전용",cat:"렌트"},
+{plate:"189호1132",model:"셀토스",dept:"영업본부",type:"전용",cat:"렌트"}
+];
+/* 조직도 전체 인원 (회장님·사장님 2인 제외) — ID=PW=이름 자동 생성 */
+const SEED_ORG={
+"부사장실":["가세현"],
+"영업본부":["조성민","조강연","이정수","정근영","유종성","박기범","손만제","김도원","구현수","진소우","김승제","김규섭"],
+"목창호생산관리팀":["김병철","신철호","김은진","유인상","정제윤","조희석","이광웅"],
+"전산실":["장이현"],
+"관리부":["지석근"],
+"물류팀":["김형근","조재훈","문정환","이재인","임희춘","문영환","박성진"],
+"구매팀":["이재일","신용희"],
+"유리사업부":["김대중","김형식","이성우","우정남"],
+"영업지원팀":["장용남","김명진","이학영","이종미","윤승재","백선아","장윤천"],
+"재경팀":["김애경","나미정"],
+"연구전담부서":["이철희","가정임","박은미","홍진주"],
+"품질/AS팀":["이민호","장정훈","유제동"],
+"인사총무팀":["곽봉수","엄윤선","빈윤정","연은주","박병학"],
+"기획홍보실":["엄지용","위성환"],
+"세정·카스우드":["김은숙","최돈철"],
+"완성창":["양인석","김대근","이정호","전상국","유승엽"],
+"샤시영업본부":["김영신","오상규","지상근","박철휘","우영하","김정훈","이석현","오신교","김유찬","윤제현"],
+"래핑몰딩":["우병수","김창호","박병규","최정식","한기호","김영기"],
+"샤시생산관리팀":["오주형","최의원","배삼만","김영란","한천수","정진우","유동호","지홍규","차종권","서영일","조일오","최영호","김영갑","원명섭"]
+};
+/* 개인별 전용차량 지정 (현황 엑셀 기준 · 총무부 관리자 페이지에서 변경 가능) */
+const SEED_VMAP={"가세현":"19노8679","유제동":"810로7971","장정훈":"811구7817","김유찬":"311수5686","이석현":"383무5247","김영신":"228루8048","지상근":"231누5261","윤제현":"87더0991","김대근":"83조8150","전상국":"83조3874","유인상":"87더0462","문영환":"89오0759","정근영":"289구8972","구현수":"123가8358","손만제":"163서5541","이정수":"366러6790","유종성":"195하2090","유승엽":"195하6441","박철휘":"195하8557","진소우":"196하2581","조성민":"196호8904","박기범":"196호8905","오신교":"196호8906","김규섭":"177호7301","김도원":"189호1131","조강연":"189호1132"};
+const HOLIDAYS=["2026-01-01","2026-02-16","2026-02-17","2026-02-18","2026-03-01","2026-03-02","2026-05-05","2026-05-24","2026-05-25","2026-06-06","2026-08-15","2026-08-17","2026-09-24","2026-09-25","2026-09-26","2026-10-03","2026-10-05","2026-10-09","2026-12-25","2027-01-01","2027-02-06","2027-02-07","2027-02-08","2027-02-09","2027-03-01","2027-05-05","2027-05-13","2027-06-06","2027-08-15","2027-08-16","2027-09-14","2027-09-15","2027-09-16","2027-10-03","2027-10-04","2027-10-09","2027-10-11","2027-12-25"];
+const MAINT_ITEMS=[
+{name:"엔진오일",km:10000,mo:12},{name:"브레이크오일",km:40000,mo:24},{name:"브레이크패드",km:30000,mo:0},
+{name:"타이어",km:50000,mo:36},{name:"에어컨필터",km:15000,mo:12},{name:"와이퍼",km:0,mo:12},
+{name:"미션오일",km:80000,mo:0},{name:"냉각수",km:40000,mo:24},{name:"배터리",km:60000,mo:36}];
+const COMPANY="재현하늘창";
+
+/* ═══════════ 저장소 (Firebase ↔ 기기저장 자동 전환) ═══════════ */
+let useFB=false, fdb=null;
+try{
+  const c=window.FIREBASE_CONFIG||{};
+  if(c.apiKey && !/여기에/.test(c.apiKey)){ firebase.initializeApp(c); fdb=firebase.firestore(); useFB=true; }
+}catch(e){ console.warn("Firebase 초기화 실패 → 기기저장 모드", e); }
+const LS={
+  get(k){ try{return JSON.parse(localStorage.getItem("jhc2_"+k))||[]}catch(e){return[]} },
+  set(k,v){ localStorage.setItem("jhc2_"+k,JSON.stringify(v)) }
+};
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+async function dbAll(col){
+  if(useFB){ const s=await fdb.collection(col).get(); return s.docs.map(d=>({id:d.id,...d.data()})); }
+  return LS.get(col);
+}
+async function dbAdd(col,obj){
+  if(useFB){ const r=await fdb.collection(col).add(obj); return r.id; }
+  obj.id=uid(); const a=LS.get(col); a.push(obj); LS.set(col,a); return obj.id;
+}
+async function dbUpd(col,id,patch){
+  if(useFB){ await fdb.collection(col).doc(id).set(patch,{merge:true}); return; }
+  const a=LS.get(col); const i=a.findIndex(x=>x.id===id); if(i>-1){Object.assign(a[i],patch);LS.set(col,a);}
+}
+async function dbDel(col,id){
+  if(useFB){ await fdb.collection(col).doc(id).delete(); return; }
+  LS.set(col,LS.get(col).filter(x=>x.id!==id));
+}
+async function getSettings(){
+  if(useFB){ const d=await fdb.collection("settings").doc("main").get(); return d.exists?d.data():null; }
+  const a=LS.get("settings"); return a.length?a[0]:null;
+}
+async function saveSettings(s){
+  if(useFB){ await fdb.collection("settings").doc("main").set(s,{merge:true}); return; }
+  const cur=(LS.get("settings")[0])||{}; LS.set("settings",[Object.assign(cur,s)]);
+}
+
+/* ═══════════ 시드 & 캐시 ═══════════ */
+let VEHICLES=[],ACCOUNTS=[],SETTINGS={};
+async function ensureSeed(){
+  let st=await getSettings();
+  if(!st||st.seedV!==2){
+    // 구버전 데이터 정리 후 v2 시드
+    for(const col of ["vehicles","users","accounts"]){
+      const old=await dbAll(col); for(const o of old) await dbDel(col,o.id);
+    }
+    for(const v of SEED_VEHICLES) await dbAdd("vehicles",{...v,active:true});
+    for(const dept of Object.keys(SEED_ORG)) for(const name of SEED_ORG[dept])
+      await dbAdd("accounts",{name,dept,userId:name,pw:name,vehicle:SEED_VMAP[name]||""});
+    st=Object.assign({adminId:"jhintex",adminPw:"jhintex",extraHolidays:"",seedV:2},st||{});
+    st.seedV=2; await saveSettings(st);
+  }
+  SETTINGS=st;
+}
+async function loadCore(){
+  VEHICLES=(await dbAll("vehicles")).filter(v=>v.active!==false).sort((a,b)=>(a.dept||"").localeCompare(b.dept||"")||a.plate.localeCompare(b.plate));
+  ACCOUNTS=(await dbAll("accounts")).sort((a,b)=>a.dept.localeCompare(b.dept)||a.name.localeCompare(b.name));
+  SETTINGS=(await getSettings())||SETTINGS;
+}
+
+/* ═══════════ 유틸 ═══════════ */
+const $=s=>document.querySelector(s);
+const todayStr=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const nowTime=()=>{const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")};
+function isOffday(ds){
+  const d=new Date(ds+"T00:00:00"); const w=d.getDay();
+  if(w===0||w===6) return true;
+  const extra=(SETTINGS.extraHolidays||"").split(/[\s,]+/).filter(Boolean);
+  return HOLIDAYS.includes(ds)||extra.includes(ds);
+}
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>n==null||n===""?"-":Number(n).toLocaleString();
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",2500);}
+function modal(html){$("#modal-root").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">'+html+'</div></div>';}
+function closeModal(){$("#modal-root").innerHTML="";}
+async function vehicleTrips(plate){ return (await dbAll("trips")).filter(t=>t.vehicle===plate); }
+function lastKm(trips){ let m=0; for(const t of trips){ if(t.endKm&&+t.endKm>m)m=+t.endKm; if(t.startKm&&+t.startKm>m)m=+t.startKm;} return m; }
+function openTrip(trips){ return trips.filter(t=>t.status==="운행중").sort((a,b)=>(b.date+b.startTime).localeCompare(a.date+a.startTime))[0]; }
+
+/* ═══════════ 세션 · 로그인 ═══════════ */
+let SESSION=null;
+function saveSession(){ localStorage.setItem("jhc2_sess",JSON.stringify(SESSION)); }
+function loadSession(){ try{SESSION=JSON.parse(localStorage.getItem("jhc2_sess"))}catch(e){SESSION=null} }
+function isAdmin(){ return SESSION&&SESSION.role==="admin"; }
+function renderLogin(msg){
+  document.body.classList.remove("inapp");
+  $("#login").style.display="flex"; $("#app").innerHTML="";
+  $("#login").innerHTML=`
+  <div class="login-card">
+    <img src="logo-h.png" alt="${COMPANY}">
+    ${msg?`<div class="banner warn">${esc(msg)}</div>`:""}
+    <label>ID</label><input id="liId" value="${esc(localStorage.getItem("jhc2_saveid")||"")}" autocomplete="username">
+    <label>PW</label><input id="liPw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="chk"><input type="checkbox" id="liSave" ${localStorage.getItem("jhc2_saveid")?"checked":""}><label for="liSave" style="margin:0">아이디 저장</label></div>
+    <button class="btn" style="background:var(--navy)" onclick="doLogin()">LOGIN</button>
+    <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>본인 계정으로만 사용하시기 바랍니다. (초기 PW = 본인 이름)</div>
+  </div>`;
+}
+async function doLogin(){
+  const id=$("#liId").value.trim(), pw=$("#liPw").value;
+  if(!id||!pw) return toast("ID와 PW를 입력하세요");
+  await ensureSeed(); await loadCore();
+  if($("#liSave").checked) localStorage.setItem("jhc2_saveid",id); else localStorage.removeItem("jhc2_saveid");
+  if(id===SETTINGS.adminId&&pw===SETTINGS.adminPw){
+    SESSION={aid:"__admin",name:"총무부 관리자",dept:"인사총무팀",role:"admin",vehicle:""};
+    saveSession(); return enterApp(true);
+  }
+  const acc=ACCOUNTS.find(a=>a.userId===id&&a.pw===pw);
+  if(!acc) return toast("ID 또는 비밀번호가 올바르지 않습니다");
+  SESSION={aid:acc.id,name:acc.name,dept:acc.dept,role:"user",vehicle:acc.vehicle||""};
+  saveSession(); enterApp(true);
+}
+function logout(){ SESSION=null; localStorage.removeItem("jhc2_sess"); renderLogin(); }
+async function enterApp(showNotice){
+  document.body.classList.add("inapp");
+  $("#login").style.display="none";
+  $("#uName").textContent=SESSION.name+(isAdmin()?" (관리자)":"");
+  $("#mode").textContent=useFB?"서버 공유":"기기 저장";
+  $("#mode").className="badge"+(useFB?" on":"");
+  const items=[["home","🏠","홈"],["shared","🚐","공용차량"],["maint","🔧","소모품"],["history","📋","기록"]];
+  items.push(isAdmin()?["admin","🔐","관리"]:["my","👤","내정보"]);
+  $("#navbar").innerHTML=items.map(i=>`<button data-v="${i[0]}" onclick="nav('${i[0]}')"><span>${i[1]}</span>${i[2]}</button>`).join("");
+  await nav("home");
+  if(showNotice) showNotices();
+}
+
+/* ═══════════ 공지 팝업 ═══════════ */
+const seenNotices=new Set();
+async function showNotices(){
+  const ns=(await dbAll("notices")).filter(n=>n.active!==false).sort((a,b)=>b.date.localeCompare(a.date));
+  const show=ns.filter(n=>!seenNotices.has(n.id)&&localStorage.getItem("jhc2_nhide_"+n.id)!==todayStr());
+  if(!show.length) return;
+  const n=show[0];
+  modal(`<h3>📢 ${esc(n.title)}</h3><p class="sub">${esc(n.date)} · 총무부(관리부서)</p>
+  <div class="notice-body">${esc(n.body)}</div>
+  ${show.length>1?`<p class="sub">외 공지 ${show.length-1}건 — 닫으면 이어서 표시됩니다.</p>`:""}
+  <div class="chk" style="display:flex;gap:6px;align-items:center;font-size:13px;color:var(--mut)"><input type="checkbox" id="nHide" style="width:auto"><label for="nHide" style="margin:0">오늘 하루 이 공지 열지 않기</label></div>
+  <button class="btn" onclick="closeNotice('${n.id}')">닫기</button>`);
+}
+function closeNotice(id){
+  if($("#nHide")&&$("#nHide").checked) localStorage.setItem("jhc2_nhide_"+id,todayStr());
+  seenNotices.add(id);
+  closeModal(); showNotices();
+}
+
+/* ═══════════ 권한: 조회 가능 차량 ═══════════ */
+function visibleVehicles(){
+  if(isAdmin()) return VEHICLES;
+  return VEHICLES.filter(v=>v.type==="공용"||v.plate===SESSION.vehicle);
+}
+
+/* ═══════════ 라우팅 ═══════════ */
+let VIEW="home";
+async function nav(v){
+  if(!SESSION) return renderLogin();
+  VIEW=v; document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("act",b.dataset.v===v));
+  $("#app").innerHTML="<div class='card'>불러오는 중…</div>";
+  try{ await loadCore(); await ({home:vHome,shared:vShared,maint:vMaint,history:vHistory,admin:vAdmin,my:vMy})[v](); }
+  catch(e){ $("#app").innerHTML=`<div class='banner warn'>오류: ${esc(e.message)}</div>`; }
+}
+function offBanner(){ return isOffday(todayStr())?`<div class="banner warn">⚠️ 오늘은 휴무일(토·일·공휴일)입니다.<br>법인차량 운행은 사전 승인된 경우만 가능합니다.</div>`:""; }
+function personSelectors(selDept,selName){
+  const depts=[...new Set(ACCOUNTS.map(a=>a.dept))];
+  const names=ACCOUNTS.filter(a=>a.dept===selDept);
+  return `<div class="row">
+  <div><label>부서</label><select id="drvDept" onchange="onDrvDept()">${depts.map(d=>`<option ${d===selDept?"selected":""}>${esc(d)}</option>`).join("")}</select></div>
+  <div><label>이름</label><select id="drvName">${names.map(a=>`<option ${a.name===selName?"selected":""}>${esc(a.name)}</option>`).join("")}</select></div>
+  </div>`;
+}
+function onDrvDept(){
+  const d=$("#drvDept").value;
+  $("#drvName").innerHTML=ACCOUNTS.filter(a=>a.dept===d).map(a=>`<option>${esc(a.name)}</option>`).join("");
+  const p=$("#purpose"); if(p&&!p.dataset.touched) p.value=/영업/.test(d)?"거래처 방문":"";
+}
+function maintAlerts(plate,trips,recs){
+  const cur=lastKm(trips); const out=[];
+  for(const it of MAINT_ITEMS){
+    const last=recs.filter(r=>r.vehicle===plate&&r.item===it.name).sort((a,b)=>b.date.localeCompare(a.date))[0];
+    if(!last) continue;
+    if(it.km&&cur){ const rem=it.km-(cur-(+last.km||0));
+      if(rem<=0) out.push(`<span class="m-due">${esc(it.name)} 교체시기 ${fmt(-rem)}km 초과</span>`);
+      else if(rem<=1000) out.push(`<span class="m-warn">${esc(it.name)} ${fmt(rem)}km 남음</span>`);}
+    if(it.mo){ const due=new Date(last.date); due.setMonth(due.getMonth()+it.mo);
+      const dd=Math.round((due-new Date())/864e5);
+      if(dd<=0) out.push(`<span class="m-due">${esc(it.name)} 교체기간 경과</span>`);
+      else if(dd<=30) out.push(`<span class="m-warn">${esc(it.name)} ${dd}일 남음</span>`);}
+  }
+  return out.length?`<div class="banner warn" style="font-weight:400">🔧 <b>소모품 알림</b><br>${out.join(" · ")}</div>`:"";
+}
+
+/* ═══════════ 홈 (내 전용차량) ═══════════ */
+async function vHome(){
+  const my=VEHICLES.find(v=>v.plate===SESSION.vehicle);
+  if(!my){
+    $("#app").innerHTML=offBanner()+`
+    <div class="card"><h2>안녕하세요, ${esc(SESSION.name)} 님</h2>
+    <p class="sub">지정된 전용차량이 없습니다.${isAdmin()?"":" 전용차량 지정은 총무부에 문의하세요."}</p>
+    <button class="btn teal" onclick="nav('shared')">🚐 공용차량 이용하기</button>
+    ${isAdmin()?`<button class="btn" onclick="nav('admin')">🔐 관리 페이지</button>`:""}</div>`;
+    return;
+  }
+  const trips=await vehicleTrips(my.plate);
+  const recs=await dbAll("maintenance");
+  const cur=lastKm(trips), ot=openTrip(trips);
+  const today=trips.filter(t=>t.date===todayStr());
+  const tDist=today.reduce((s,t)=>s+(+t.dist||0),0);
+  const defPurpose=/영업/.test(SESSION.dept)?"거래처 방문":"";
+  const canEnd=ot&&(ot.uid===SESSION.aid||isAdmin());
+  $("#app").innerHTML=offBanner()+maintAlerts(my.plate,trips,recs)+`
+  <div class="card">
+    <div><div class="plate">${esc(my.plate)}</div><div class="sub">${esc(my.model)} · ${esc(my.dept)} · ${esc(my.type)}</div></div>
+    <div class="row" style="margin-top:14px;text-align:center">
+      <div><div class="kmbig">${fmt(cur)}</div><div class="sub">총 주행거리(km)</div></div>
+      <div><div class="kmbig">${fmt(tDist)}</div><div class="sub">오늘 운행거리(km)</div></div>
+    </div>
+  </div>
+  ${ot?(canEnd?`
+  <div class="card"><h2>🟢 운행 중</h2>
+    <p class="sub">${esc(ot.date)} ${esc(ot.startTime)} 출발 · 시작 ${fmt(ot.startKm)} km · ${esc(ot.user)}</p>
+    <label>종료 시 계기판 총 키로수 (km)</label>
+    <input type="number" id="endKm" inputmode="numeric" oninput="calcDist(${ot.startKm})">
+    <p class="sub" id="distView" style="margin-top:6px">운행거리: - km</p>
+    <button class="btn red" onclick="endDrive('${ot.id}',${ot.startKm})">운행 종료</button>
+  </div>`:`<div class="card"><h2>🟢 운행 중</h2><p class="sub">${esc(ot.user)} 님이 ${esc(ot.date)} ${esc(ot.startTime)}부터 사용 중입니다.</p></div>`):`
+  <div class="card"><h2>운행 시작</h2>
+    <label>운전자 (고정)</label>
+    <div style="padding:12px;border:1px solid var(--bd);border-radius:8px;background:#f8fafc;font-weight:700">${esc(SESSION.dept)} · ${esc(SESSION.name)}</div>
+    <p class="sub" style="margin-top:4px">전용차량의 운전자·차량번호 변경은 총무부(관리부서)만 가능합니다.</p>
+    <label>시작 시 계기판 총 키로수 (km)</label>
+    <input type="number" id="startKm" inputmode="numeric" value="${cur||""}" placeholder="예: 45230">
+    <label>운행 목적</label><input id="purpose" value="${esc(defPurpose)}" placeholder="예: 거래처 방문" oninput="this.dataset.touched=1">
+    <button class="btn grn" onclick="startDrive('${esc(my.plate)}',false)">운행 시작</button>
+  </div>`}`;
+}
+function calcDist(s){ const e=+$("#endKm").value; $("#distView").innerHTML=e>s?`운행거리: <b>${fmt(e-s)} km</b>`:"운행거리: - km"; }
+async function startDrive(plate,pubRequired){
+  const v=VEHICLES.find(x=>x.plate===plate);
+  const dept=$("#drvDept")?$("#drvDept").value:SESSION.dept;
+  const name=$("#drvName")?$("#drvName").value:SESSION.name;
+  const km=$("#startKm").value, pur=($("#purpose")?$("#purpose").value.trim():"");
+  if(!name) return toast("이름을 선택하세요");
+  if(!km) return toast("시작 키로수를 입력하세요");
+  if(pubRequired&&!pur) return toast("공용차량은 운행 목적을 반드시 입력해야 합니다");
+  const off=isOffday(todayStr());
+  if(off && !confirm("⚠️ 오늘은 휴무일입니다.\n사전 승인된 운행입니까?\n(휴무일 운행으로 기록되며 관리부서에 표시됩니다)")) return;
+  await dbAdd("trips",{vehicle:plate,model:v?v.model:"",dept:dept,user:name,uid:SESSION.aid,date:todayStr(),startTime:nowTime(),endTime:"",startKm:+km,endKm:null,dist:null,purpose:pur,offday:off,status:"운행중"});
+  toast(off?"⚠️ 휴무일 운행 시작 기록됨":"운행 시작 기록됨"); nav(VIEW);
+}
+async function endDrive(id,startKm){
+  const e=+$("#endKm").value;
+  if(!e) return toast("종료 키로수를 입력하세요");
+  if(e<=startKm) return toast("종료 키로수는 시작보다 커야 합니다");
+  await dbUpd("trips",id,{endKm:e,dist:e-startKm,endTime:nowTime(),status:"완료"});
+  toast(`운행 종료 · ${fmt(e-startKm)} km`); nav(VIEW);
+}
+
+/* ═══════════ 공용차량 ═══════════ */
+let shDept="",shPlate="";
+async function vShared(){
+  const pubs=VEHICLES.filter(v=>v.type==="공용");
+  const depts=[...new Set(pubs.map(v=>v.dept))];
+  if(!shDept||!depts.includes(shDept)) shDept=depts[0]||"";
+  const list=pubs.filter(v=>v.dept===shDept);
+  const trips=await dbAll("trips");
+  let html=offBanner()+`<div class="card"><h2>🚐 공용차량 이용</h2>
+    <label>차량 소속 부서 선택</label>
+    <select onchange="shDept=this.value;shPlate='';nav('shared')">${depts.map(d=>`<option ${d===shDept?"selected":""}>${esc(d)}</option>`).join("")}</select>
+  </div><div class="vlist">`;
+  for(const v of list){
+    const vt=trips.filter(t=>t.vehicle===v.plate);
+    const ot=openTrip(vt), cur=lastKm(vt);
+    html+=`<div class="vitem" onclick="shPlate='${esc(v.plate)}';renderSharedForm()">
+      <div><b>${esc(v.plate)}</b> <span class="sub">${esc(v.model)}</span><div class="sub">총 ${fmt(cur)} km</div></div>
+      <div class="r">${ot?`<span class="tag off">사용중 · ${esc(ot.user)}</span>`:`<span class="tag pub">이용가능</span>`}</div></div>`;
+  }
+  html+=`</div><div id="shForm"></div>`;
+  $("#app").innerHTML=html;
+  if(shPlate) renderSharedForm();
+}
+async function renderSharedForm(){
+  const v=VEHICLES.find(x=>x.plate===shPlate); if(!v) return;
+  const vt=await vehicleTrips(shPlate); const ot=openTrip(vt), cur=lastKm(vt);
+  const el=$("#shForm"); if(!el) return;
+  const canEnd=ot&&(ot.uid===SESSION.aid||isAdmin());
+  el.innerHTML=ot?(canEnd?`
+  <div class="card"><h2>🟢 ${esc(v.plate)} 반납 (사용 종료)</h2>
+    <p class="sub">${esc(ot.date)} ${esc(ot.startTime)} 시작 · ${esc(ot.user)} · 시작 ${fmt(ot.startKm)} km</p>
+    <label>종료 시 계기판 총 키로수 (km)</label>
+    <input type="number" id="endKm" inputmode="numeric" oninput="calcDist(${ot.startKm})">
+    <p class="sub" id="distView" style="margin-top:6px">운행거리: - km</p>
+    <button class="btn red" onclick="endDrive('${ot.id}',${ot.startKm})">사용 종료</button>
+  </div>`:`<div class="card"><h2>🟢 ${esc(v.plate)} 사용 중</h2><p class="sub">${esc(ot.user)} 님이 ${esc(ot.date)} ${esc(ot.startTime)}부터 사용 중입니다. 본인이 시작한 기록만 종료할 수 있습니다.</p></div>`):`
+  <div class="card"><h2>${esc(v.plate)} 사용 시작</h2>
+    ${personSelectors(SESSION.dept,SESSION.name)}
+    <label>시작 시 계기판 총 키로수 (km)</label>
+    <input type="number" id="startKm" inputmode="numeric" value="${cur||""}">
+    <label>운행 목적 <b style="color:var(--red)">(필수)</b></label><input id="purpose" placeholder="예: 자재 운반" oninput="this.dataset.touched=1">
+    <button class="btn grn" onclick="startDrive('${esc(v.plate)}',true)">사용 시작</button>
+  </div>`;
+  if(el.scrollIntoView) el.scrollIntoView({behavior:"smooth"});
+}
+
+/* ═══════════ 소모품 ═══════════ */
+let mPlate="";
+async function vMaint(){
+  const vlist=visibleVehicles();
+  if(!vlist.length){ $("#app").innerHTML=`<div class="card"><p class="sub">조회 가능한 차량이 없습니다.</p></div>`; return; }
+  if(!mPlate||!vlist.find(v=>v.plate===mPlate)) mPlate=SESSION.vehicle&&vlist.find(v=>v.plate===SESSION.vehicle)?SESSION.vehicle:vlist[0].plate;
+  const trips=await vehicleTrips(mPlate);
+  const cur=lastKm(trips);
+  const recs=(await dbAll("maintenance")).filter(m=>m.vehicle===mPlate);
+  let rows="";
+  for(const it of MAINT_ITEMS){
+    const last=recs.filter(r=>r.item===it.name).sort((a,b)=>b.date.localeCompare(a.date))[0];
+    let st=`<span class="sub">기록 없음</span>`;
+    if(last){
+      let parts=[];
+      if(it.km&&cur){ const rem=it.km-(cur-(+last.km||0));
+        parts.push(rem<=0?`<span class="m-due">${fmt(-rem)}km 초과</span>`:rem<=1000?`<span class="m-warn">${fmt(rem)}km 남음</span>`:`<span class="m-ok">${fmt(rem)}km 남음</span>`);}
+      if(it.mo){ const due=new Date(last.date); due.setMonth(due.getMonth()+it.mo);
+        const dd=Math.round((due-new Date())/864e5);
+        parts.push(dd<=0?`<span class="m-due">기간 경과</span>`:dd<=30?`<span class="m-warn">${dd}일 남음</span>`:``);}
+      st=`<div class="sub">${esc(last.date)} · ${fmt(last.km)}km</div>${parts.filter(Boolean).join(" ")}`;
+    }
+    rows+=`<tr><td style="text-align:left"><b>${esc(it.name)}</b><div class="sub">${it.km?fmt(it.km)+"km":""}${it.km&&it.mo?" / ":""}${it.mo?it.mo+"개월":""}</div></td>
+      <td style="text-align:left">${st}</td>
+      <td><button class="btn sm" onclick="maintForm('${esc(it.name)}',${cur})">교체기록</button></td></tr>`;
+  }
+  $("#app").innerHTML=`
+  <div class="card"><h2>🔧 소모품 교체 관리</h2>
+    <label>차량</label>
+    <select onchange="mPlate=this.value;nav('maint')">${vlist.map(x=>`<option value="${esc(x.plate)}" ${x.plate===mPlate?"selected":""}>${esc(x.plate)} ${esc(x.model)} (${esc(x.type)})</option>`).join("")}</select>
+    <p class="sub" style="margin-top:8px">현재 총 주행거리: <b>${fmt(cur)} km</b></p>
+  </div>
+  <div class="card"><div class="tbl-wrap"><table><thead><tr><th>항목 (권장주기)</th><th>최근 교체 / 상태</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>
+  ${recs.length?`<div class="card"><h2>교체 이력</h2><div class="tbl-wrap"><table><thead><tr><th>일자</th><th>항목</th><th>km</th><th>정비소</th><th>비용</th><th>내역</th></tr></thead><tbody>
+    ${recs.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.item)}</td><td>${fmt(r.km)}</td><td>${esc(r.shop||"")}</td><td>${r.cost?fmt(r.cost)+"원":""}</td><td>${esc(maintDetail(r))}</td></tr>`).join("")}
+  </tbody></table></div></div>`:""}`;
+}
+function maintDetail(r){
+  let s=[];
+  if(r.item==="타이어"&&(r.tireF||r.tireR)) s.push(`앞 ${r.tireF||0}개·뒤 ${r.tireR||0}개`);
+  if(r.memo) s.push(r.memo);
+  return s.join(" / ");
+}
+function maintForm(item,cur){
+  const tire=item==="타이어";
+  modal(`<h3>🔧 ${esc(item)} 교체 기록</h3><p class="sub">${esc(mPlate)} · 입력 후에는 수정할 수 없으니 정확히 입력하세요.</p>
+  <label>교체 일자</label><input type="date" id="mDate" value="${todayStr()}">
+  <label>교체 시 총 키로수 (km)</label><input type="number" id="mKm" inputmode="numeric" value="${cur||""}">
+  ${tire?`<div class="row"><div><label>앞 타이어 교체 (개)</label><select id="mTf"><option>0</option><option>1</option><option selected>2</option></select></div>
+  <div><label>뒤 타이어 교체 (개)</label><select id="mTr"><option>0</option><option>1</option><option selected>2</option></select></div></div>`:""}
+  <label>정비소 이름</label><input id="mShop" placeholder="예: OO모터스">
+  <label>비용 (원)</label><input type="number" id="mCost" inputmode="numeric" placeholder="예: 480000">
+  <label>메모 (선택)</label><input id="mMemo" placeholder="기타 특이사항">
+  <button class="btn" onclick="saveMaint('${esc(item)}',${tire})">저장</button>
+  <button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function saveMaint(item,tire){
+  const d=$("#mDate").value,k=$("#mKm").value;
+  if(!d||!k) return toast("일자와 키로수를 입력하세요");
+  const rec={vehicle:mPlate,item,date:d,km:+k,shop:$("#mShop").value.trim(),cost:+($("#mCost").value||0),memo:$("#mMemo").value.trim(),uid:SESSION.aid,by:SESSION.name};
+  if(tire){ rec.tireF=+$("#mTf").value; rec.tireR=+$("#mTr").value;
+    if(!rec.tireF&&!rec.tireR) return toast("교체한 타이어 개수를 선택하세요"); }
+  if(item==="타이어"&&!rec.shop) return toast("정비소 이름을 입력하세요");
+  await dbAdd("maintenance",rec);
+  closeModal(); toast("교체 기록 저장됨"); nav("maint");
+}
+
+/* ═══════════ 기록 (본인 차량 + 공용만) ═══════════ */
+async function vHistory(){
+  const vlist=visibleVehicles();
+  if(!vlist.length){ $("#app").innerHTML=`<div class="card"><p class="sub">조회 가능한 차량이 없습니다.</p></div>`; return; }
+  let p=localStorage.getItem("jhc2_hview");
+  if(!p||!vlist.find(v=>v.plate===p)) p=SESSION.vehicle&&vlist.find(v=>v.plate===SESSION.vehicle)?SESSION.vehicle:vlist[0].plate;
+  const trips=(await vehicleTrips(p)).sort((a,b)=>(b.date+(b.startTime||"")).localeCompare(a.date+(a.startTime||"")));
+  const mTot=trips.filter(t=>t.date.startsWith(todayStr().slice(0,7))).reduce((s,t)=>s+(+t.dist||0),0);
+  $("#app").innerHTML=`
+  <div class="card"><h2>📋 운행기록</h2><label>차량</label>
+  <select onchange="localStorage.setItem('jhc2_hview',this.value);nav('history')">${vlist.map(x=>`<option value="${esc(x.plate)}" ${x.plate===p?"selected":""}>${esc(x.plate)} ${esc(x.model)} (${esc(x.type)})</option>`).join("")}</select>
+  <p class="sub" style="margin-top:8px">이번 달 운행거리: <b>${fmt(mTot)} km</b> · 총 ${trips.length}건 · 기록은 저장 후 수정할 수 없습니다.</p></div>
+  <div class="card"><div class="tbl-wrap"><table><thead><tr><th>일자</th><th>부서</th><th>사용자</th><th>시작km</th><th>종료km</th><th>거리</th><th>목적</th></tr></thead><tbody>
+  ${trips.slice(0,50).map(t=>`<tr class="${t.offday?"off":""}"><td>${esc(t.date.slice(5))}${t.offday?" <span class='tag off'>휴무</span>":""}</td><td>${esc(t.dept)}</td><td>${esc(t.user)}</td><td>${fmt(t.startKm)}</td><td>${t.status==="운행중"?"<b style='color:var(--grn)'>운행중</b>":fmt(t.endKm)}</td><td><b>${fmt(t.dist)}</b></td><td>${esc(t.purpose||"")}</td></tr>`).join("")||"<tr><td colspan=7>기록 없음</td></tr>"}
+  </tbody></table></div></div>`;
+}
+
+/* ═══════════ 내정보 ═══════════ */
+async function vMy(){
+  const v=VEHICLES.find(x=>x.plate===SESSION.vehicle);
+  $("#app").innerHTML=`
+  <div class="card"><h2>👤 내 정보</h2>
+    <p style="font-size:15px;margin:6px 0"><b>${esc(SESSION.name)}</b> · ${esc(SESSION.dept)}</p>
+    <p class="sub">지정 전용차량: ${v?esc(v.plate)+" ("+esc(v.model)+")":"없음"}</p>
+    <p class="sub">차량 지정 변경·부서 이동은 총무부에 문의하세요.</p></div>
+  <div class="card"><h2>비밀번호 변경</h2>
+    <label>현재 비밀번호</label><input type="password" id="cpw">
+    <label>새 비밀번호</label><input type="password" id="npw">
+    <button class="btn sm" onclick="chMyPw()">변경</button></div>
+  <button class="btn red" onclick="logout()">로그아웃</button>`;
+}
+async function chMyPw(){
+  const acc=ACCOUNTS.find(a=>a.id===SESSION.aid);
+  if(!acc) return toast("계정 오류");
+  if($("#cpw").value!==acc.pw) return toast("현재 비밀번호가 틀립니다");
+  const p=$("#npw").value; if(p.length<4) return toast("새 비밀번호는 4자 이상");
+  await dbUpd("accounts",acc.id,{pw:p}); toast("비밀번호 변경됨");
+}
+
+/* ═══════════ 관리자 ═══════════ */
+let aTab="trips";
+async function vAdmin(){
+  if(!isAdmin()){ $("#app").innerHTML=`<div class="banner warn">총무부 관리자만 접근할 수 있습니다.</div>`; return; }
+  const tabs=[["trips","운행기록"],["book","운행기록부"],["veh","차량"],["acc","계정"],["maint","소모품"],["notice","공지"],["set","설정"]];
+  $("#app").innerHTML=`<div class="tabs">${tabs.map(t=>`<div class="tab ${aTab===t[0]?"act":""}" onclick="aTab='${t[0]}';nav('admin')">${t[1]}</div>`).join("")}</div><div id="aBody"></div>`;
+  await ({trips:aTrips,book:aBook,veh:aVeh,acc:aAcc,maint:aMaint,notice:aNotice,set:aSet})[aTab]();
+}
+async function aTrips(){
+  const trips=(await dbAll("trips")).sort((a,b)=>(b.date+(b.startTime||"")).localeCompare(a.date+(a.startTime||"")));
+  const f=window._af||{v:"",u:"",from:"",to:""};
+  const users=[...new Set(trips.map(t=>t.user))].sort();
+  const list=trips.filter(t=>(!f.v||t.vehicle===f.v)&&(!f.u||t.user===f.u)&&(!f.from||t.date>=f.from)&&(!f.to||t.date<=f.to));
+  const offCnt=list.filter(t=>t.offday).length;
+  $("#aBody").innerHTML=`
+  <div class="stat"><div class="card"><div class="n">${list.length}</div><div class="l">운행 건수</div></div>
+  <div class="card"><div class="n">${fmt(list.reduce((s,t)=>s+(+t.dist||0),0))}</div><div class="l">총 운행거리(km)</div></div>
+  <div class="card"><div class="n" style="color:${offCnt?"var(--red)":"var(--navy)"}">${offCnt}</div><div class="l">휴무일 운행</div></div></div>
+  <div class="card">
+    <div class="row"><div><label>차량</label><select id="fV"><option value="">전체</option>${VEHICLES.map(v=>`<option ${f.v===v.plate?"selected":""}>${esc(v.plate)}</option>`).join("")}</select></div>
+    <div><label>사용자</label><select id="fU"><option value="">전체</option>${users.map(u=>`<option ${f.u===u?"selected":""}>${esc(u)}</option>`).join("")}</select></div></div>
+    <div class="row"><div><label>시작일</label><input type="date" id="fF" value="${f.from}"></div>
+    <div><label>종료일</label><input type="date" id="fT" value="${f.to}"></div></div>
+    <div class="row">
+    <button class="btn sm sec" onclick="window._af={v:$('#fV').value,u:$('#fU').value,from:$('#fF').value,to:$('#fT').value};nav('admin')">필터 적용</button>
+    <button class="btn sm grn" onclick="dlExcel()">📥 전체기록 엑셀</button></div>
+  </div>
+  <div class="card"><div class="tbl-wrap"><table><thead><tr><th>일자</th><th>차량</th><th>부서</th><th>사용자</th><th>시작</th><th>종료</th><th>거리</th><th>목적</th><th></th></tr></thead><tbody>
+  ${list.slice(0,100).map(t=>`<tr class="${t.offday?"off":""}"><td>${esc(t.date)}${t.offday?"<br><span class='tag off'>휴무일</span>":""}</td><td>${esc(t.vehicle)}</td><td>${esc(t.dept)}</td><td>${esc(t.user)}</td><td>${fmt(t.startKm)}</td><td>${t.status==="운행중"?"운행중":fmt(t.endKm)}</td><td><b>${fmt(t.dist)}</b></td><td>${esc(t.purpose||"")}</td><td class="del" onclick="if(confirm('이 기록을 삭제할까요? (관리자 권한)'))delTrip('${t.id}')">✕</td></tr>`).join("")}
+  </tbody></table></div><p class="sub" style="margin-top:6px">최근 100건 표시 · 전체는 엑셀 다운로드 이용 · 기록 수정·삭제는 관리자만 가능</p></div>`;
+}
+async function delTrip(id){ await dbDel("trips",id); toast("삭제됨"); nav("admin"); }
+async function dlExcel(){
+  const trips=(await dbAll("trips")).sort((a,b)=>(a.date+(a.startTime||"")).localeCompare(b.date+(b.startTime||"")));
+  const f=window._af||{v:"",u:"",from:"",to:""};
+  const list=trips.filter(t=>(!f.v||t.vehicle===f.v)&&(!f.u||t.user===f.u)&&(!f.from||t.date>=f.from)&&(!f.to||t.date<=f.to));
+  const recs=await dbAll("maintenance");
+  const wb=XLSX.utils.book_new();
+  const s1=XLSX.utils.json_to_sheet(list.map(t=>({일자:t.date,요일:"일월화수목금토"[new Date(t.date+"T00:00:00").getDay()],휴무일운행:t.offday?"⚠휴무일":"",차량번호:t.vehicle,차종:t.model,부서:t.dept,사용자:t.user,시작시각:t.startTime,종료시각:t.endTime,"시작km":t.startKm,"종료km":t.endKm,"운행거리km":t.dist,목적:t.purpose||"",상태:t.status})));
+  s1["!cols"]=[{wch:11},{wch:5},{wch:9},{wch:11},{wch:12},{wch:14},{wch:9},{wch:8},{wch:8},{wch:9},{wch:9},{wch:10},{wch:16},{wch:7}];
+  XLSX.utils.book_append_sheet(wb,s1,"운행기록");
+  const s2=XLSX.utils.json_to_sheet(recs.map(r=>({차량번호:r.vehicle,항목:r.item,교체일:r.date,"교체시km":r.km,정비소:r.shop||"",비용:r.cost||"",타이어앞:r.tireF||"",타이어뒤:r.tireR||"",메모:r.memo||"",입력자:r.by||""})));
+  s2["!cols"]=[{wch:11},{wch:10},{wch:11},{wch:10},{wch:14},{wch:10},{wch:8},{wch:8},{wch:20},{wch:8}];
+  XLSX.utils.book_append_sheet(wb,s2,"소모품교체");
+  const s3=XLSX.utils.json_to_sheet(VEHICLES.map(v=>({차량번호:v.plate,차종:v.model,구분:v.cat,유형:v.type,부서:v.dept,지정사용자:(ACCOUNTS.find(a=>a.vehicle===v.plate)||{}).name||""})));
+  s3["!cols"]=[{wch:11},{wch:14},{wch:6},{wch:6},{wch:16},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,s3,"차량현황");
+  XLSX.writeFile(wb,`법인차량_전체기록_${todayStr().replace(/-/g,"")}.xlsx`);
+}
+/* 운행기록부 (회계감사·세무 제출용, 국세청 별지 제29호 서식 준용) */
+async function aBook(){
+  const y=todayStr().slice(0,4);
+  $("#aBody").innerHTML=`
+  <div class="card"><h2>📑 업무용승용차 운행기록부 (감사·세무 제출용)</h2>
+    <p class="sub">차량별로 시트가 나뉜 엑셀을 생성합니다. 경리부서 제출용 — 법인세법 시행규칙 별지 제29호 서식 준용.</p>
+    <div class="row"><div><label>과세기간 시작</label><input type="date" id="bF" value="${y}-01-01"></div>
+    <div><label>과세기간 종료</label><input type="date" id="bT" value="${todayStr()}"></div></div>
+    <label>차량</label><select id="bV"><option value="">전체 차량 (차량별 시트)</option>${VEHICLES.map(v=>`<option value="${esc(v.plate)}">${esc(v.plate)} ${esc(v.model)}</option>`).join("")}</select>
+    <button class="btn grn" onclick="dlBook()">📥 운행기록부 엑셀 생성</button></div>`;
+}
+async function dlBook(){
+  const from=$("#bF").value,to=$("#bT").value,only=$("#bV").value;
+  const trips=(await dbAll("trips")).filter(t=>t.status==="완료"&&(!from||t.date>=from)&&(!to||t.date<=to)).sort((a,b)=>(a.date+(a.startTime||"")).localeCompare(b.date+(b.startTime||"")));
+  const vlist=only?VEHICLES.filter(v=>v.plate===only):VEHICLES;
+  const wb=XLSX.utils.book_new();
+  let made=0;
+  for(const v of vlist){
+    const rows=trips.filter(t=>t.vehicle===v.plate);
+    if(!rows.length&&!only) continue;
+    const total=rows.reduce((s,t)=>s+(+t.dist||0),0);
+    const aoa=[
+      ["업무용승용차 운행기록부"],
+      ["과세기간:",from+" ~ "+to,"","법인명:",COMPANY],
+      ["차종:",v.model,"","자동차등록번호:",v.plate],
+      [],
+      ["사용일자","부서","성명","주행 전 계기판거리(km)","주행 후 계기판거리(km)","주행거리(km)","업무용 사용거리(km)","비고"],
+      ...rows.map(t=>[t.date,t.dept,t.user,t.startKm,t.endKm,t.dist,t.dist,(t.purpose||"")+(t.offday?" [휴무일 운행]":"")]),
+      [],
+      ["과세기간 합계","","","","",total,total,""],
+      ["업무사용비율","100%"]
+    ];
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=[{wch:12},{wch:14},{wch:9},{wch:18},{wch:18},{wch:12},{wch:15},{wch:22}];
+    XLSX.utils.book_append_sheet(wb,ws,v.plate.replace(/[\\\/\?\*\[\]:]/g,""));
+    made++;
+  }
+  if(!made) return toast("해당 기간 완료된 운행기록이 없습니다");
+  XLSX.writeFile(wb,`운행기록부_${from.replace(/-/g,"")}-${to.replace(/-/g,"")}.xlsx`);
+}
+async function aVeh(){
+  $("#aBody").innerHTML=`<div class="card"><button class="btn sm grn" onclick="vehForm()">＋ 차량 추가</button></div>
+  <div class="card"><div class="tbl-wrap"><table><thead><tr><th>차량번호</th><th>차종</th><th>유형</th><th>부서</th><th>지정 사용자</th><th></th><th></th></tr></thead><tbody>
+  ${VEHICLES.map(v=>{const owner=ACCOUNTS.find(a=>a.vehicle===v.plate);return `<tr><td><b>${esc(v.plate)}</b></td><td>${esc(v.model)}</td><td><span class="tag ${v.type==="공용"?"pub":"prv"}">${esc(v.type)}</span></td><td>${esc(v.dept)}</td><td>${owner?esc(owner.name):"-"}</td>
+  <td><button class="btn sm sec" onclick="vehForm('${v.id}')">수정</button></td>
+  <td class="del" onclick="if(confirm('${esc(v.plate)} 차량을 삭제(반납)할까요?\\n기존 기록은 유지됩니다.'))delVeh('${v.id}')">✕</td></tr>`}).join("")}
+  </tbody></table></div><p class="sub" style="margin-top:6px">개인별 차량 지정은 [계정] 탭에서 설정합니다.</p></div>`;
+}
+function vehForm(id){
+  const v=id?VEHICLES.find(x=>x.id===id):{plate:"",model:"",dept:"",type:"전용",cat:"법인"};
+  modal(`<h3>${id?"차량 수정":"차량 추가"}</h3>
+  <label>차량번호</label><input id="vP" value="${esc(v.plate)}" ${id?"readonly":""}>
+  <label>차종</label><input id="vM" value="${esc(v.model)}">
+  <label>구분</label><select id="vC"><option ${v.cat==="법인"?"selected":""}>법인</option><option ${v.cat==="렌트"?"selected":""}>렌트</option></select>
+  <label>유형</label><select id="vT"><option ${v.type==="전용"?"selected":""}>전용</option><option ${v.type==="공용"?"selected":""}>공용</option></select>
+  <label>부서(소속)</label><input id="vD" value="${esc(v.dept)}" list="deptListV">
+  <datalist id="deptListV">${[...new Set(VEHICLES.map(x=>x.dept).concat(Object.keys(SEED_ORG)))].map(d=>`<option value="${esc(d)}">`).join("")}</datalist>
+  <button class="btn" onclick="saveVeh('${id||""}')">저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function saveVeh(id){
+  const o={plate:$("#vP").value.trim(),model:$("#vM").value.trim(),cat:$("#vC").value,type:$("#vT").value,dept:$("#vD").value.trim(),active:true};
+  if(!o.plate||!o.model||!o.dept) return toast("차량번호/차종/부서는 필수입니다");
+  if(id) await dbUpd("vehicles",id,o); else await dbAdd("vehicles",o);
+  closeModal(); toast("저장됨"); nav("admin");
+}
+async function delVeh(id){ await dbUpd("vehicles",id,{active:false}); toast("차량 삭제(비활성) 처리됨"); nav("admin"); }
+async function aAcc(){
+  $("#aBody").innerHTML=`<div class="card"><button class="btn sm grn" onclick="accForm()">＋ 계정 추가</button>
+  <p class="sub" style="margin-top:6px">초기 계정: ID=PW=이름 (조직도 기준, 회장님·사장님 제외) · 본인이 앱에서 PW 변경 가능</p></div>
+  <div class="card"><div class="tbl-wrap"><table><thead><tr><th>이름</th><th>ID</th><th>부서</th><th>지정차량</th><th></th><th></th><th></th></tr></thead><tbody>
+  ${ACCOUNTS.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.userId)}</td><td>${esc(a.dept)}</td><td>${a.vehicle?esc(a.vehicle):"-"}</td>
+  <td><button class="btn sm sec" onclick="accForm('${a.id}')">수정</button></td>
+  <td><button class="btn sm sec" onclick="if(confirm('${esc(a.name)} PW를 이름(초기값)으로 초기화할까요?'))resetPw('${a.id}','${esc(a.name)}')">PW초기화</button></td>
+  <td class="del" onclick="if(confirm('${esc(a.name)} 계정을 삭제할까요?'))delAcc('${a.id}')">✕</td></tr>`).join("")}
+  </tbody></table></div></div>`;
+}
+function accForm(id){
+  const a=id?ACCOUNTS.find(x=>x.id===id):{name:"",userId:"",dept:"",vehicle:""};
+  const assigned=new Set(ACCOUNTS.filter(x=>x.id!==id&&x.vehicle).map(x=>x.vehicle));
+  const opts=VEHICLES.filter(v=>v.type==="전용"&&(!assigned.has(v.plate)||v.plate===a.vehicle));
+  modal(`<h3>${id?"계정 수정 (부서이동·차량지정)":"계정 추가"}</h3>
+  <label>이름</label><input id="aN" value="${esc(a.name)}">
+  <label>ID</label><input id="aI" value="${esc(a.userId)}" placeholder="비우면 이름과 동일">
+  ${id?"":`<label>초기 PW</label><input id="aP" placeholder="비우면 이름과 동일">`}
+  <label>부서</label><input id="aD" value="${esc(a.dept)}" list="deptListA">
+  <datalist id="deptListA">${[...new Set(ACCOUNTS.map(x=>x.dept).concat(Object.keys(SEED_ORG)))].map(d=>`<option value="${esc(d)}">`).join("")}</datalist>
+  <label>지정 전용차량</label><select id="aV"><option value="">없음 (공용만 이용)</option>${opts.map(v=>`<option value="${esc(v.plate)}" ${v.plate===a.vehicle?"selected":""}>${esc(v.plate)} ${esc(v.model)}</option>`).join("")}</select>
+  <button class="btn" onclick="saveAcc('${id||""}')">저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function saveAcc(id){
+  const name=$("#aN").value.trim(); if(!name) return toast("이름을 입력하세요");
+  const o={name,userId:($("#aI").value.trim()||name),dept:$("#aD").value.trim(),vehicle:$("#aV").value};
+  if(!o.dept) return toast("부서를 입력하세요");
+  if(!id){ o.pw=($("#aP").value||name); const dup=ACCOUNTS.find(a=>a.userId===o.userId); if(dup) return toast("이미 존재하는 ID입니다"); await dbAdd("accounts",o); }
+  else await dbUpd("accounts",id,o);
+  closeModal(); toast("저장됨"); nav("admin");
+}
+async function resetPw(id,name){ await dbUpd("accounts",id,{pw:name}); toast("PW가 이름으로 초기화됨"); }
+async function delAcc(id){ await dbDel("accounts",id); toast("계정 삭제됨"); nav("admin"); }
+async function aMaint(){
+  const recs=(await dbAll("maintenance")).sort((a,b)=>b.date.localeCompare(a.date));
+  $("#aBody").innerHTML=`<div class="card"><h2>전체 소모품 교체 이력</h2><div class="tbl-wrap"><table><thead><tr><th>일자</th><th>차량</th><th>항목</th><th>km</th><th>정비소</th><th>비용</th><th>내역</th><th>입력자</th><th></th></tr></thead><tbody>
+  ${recs.slice(0,100).map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.vehicle)}</td><td>${esc(r.item)}</td><td>${fmt(r.km)}</td><td>${esc(r.shop||"")}</td><td>${r.cost?fmt(r.cost):""}</td><td>${esc(maintDetail(r))}</td><td>${esc(r.by||"")}</td><td class="del" onclick="if(confirm('삭제할까요?'))delMaintRec('${r.id}')">✕</td></tr>`).join("")||"<tr><td colspan=9>기록 없음</td></tr>"}
+  </tbody></table></div></div>`;
+}
+async function delMaintRec(id){ await dbDel("maintenance",id); toast("삭제됨"); nav("admin"); }
+async function aNotice(){
+  const ns=(await dbAll("notices")).sort((a,b)=>b.date.localeCompare(a.date));
+  $("#aBody").innerHTML=`
+  <div class="card"><h2>📢 공지 등록</h2>
+    <p class="sub">등록하면 전 직원 로그인 시 팝업으로 표시됩니다.</p>
+    <label>제목</label><input id="ntT" placeholder="예: 2026년 하계 휴가 대비 차량 반납 안내">
+    <label>내용</label><textarea id="ntB" rows="6" placeholder="공지 내용"></textarea>
+    <button class="btn sm grn" onclick="addNotice()">등록</button></div>
+  <div class="card"><h2>공지 목록</h2><div class="tbl-wrap"><table><thead><tr><th>일자</th><th>제목</th><th>상태</th><th></th><th></th></tr></thead><tbody>
+  ${ns.map(n=>`<tr><td>${esc(n.date)}</td><td style="text-align:left">${esc(n.title)}</td><td>${n.active!==false?"게시중":"중단"}</td>
+  <td><button class="btn sm sec" onclick="toggleNotice('${n.id}',${n.active!==false})">${n.active!==false?"게시중단":"재게시"}</button></td>
+  <td class="del" onclick="if(confirm('삭제할까요?'))delNotice('${n.id}')">✕</td></tr>`).join("")||"<tr><td colspan=5>공지 없음</td></tr>"}
+  </tbody></table></div></div>`;
+}
+async function addNotice(){
+  const t=$("#ntT").value.trim(),b=$("#ntB").value.trim();
+  if(!t||!b) return toast("제목과 내용을 입력하세요");
+  await dbAdd("notices",{title:t,body:b,date:todayStr(),active:true});
+  toast("공지 등록됨 — 직원 로그인 시 팝업 표시"); nav("admin");
+}
+async function toggleNotice(id,cur){ await dbUpd("notices",id,{active:!cur}); nav("admin"); }
+async function delNotice(id){ await dbDel("notices",id); toast("삭제됨"); nav("admin"); }
+async function aSet(){
+  $("#aBody").innerHTML=`
+  <div class="card"><h2>관리자 계정 변경</h2>
+    <label>관리자 ID</label><input id="nadId" value="${esc(SETTINGS.adminId)}">
+    <label>새 비밀번호 (비우면 유지)</label><input type="password" id="nadPw">
+    <button class="btn sm" onclick="chAdmin()">변경</button></div>
+  <div class="card"><h2>추가 휴무일(공휴일) 등록</h2>
+    <p class="sub">기본: 토·일요일 + 법정공휴일(2026~2027 내장). 임시휴무·창립기념일 등을 YYYY-MM-DD 형식으로 추가.</p>
+    <textarea id="exh" rows="4" placeholder="2026-08-14">${esc(SETTINGS.extraHolidays||"")}</textarea>
+    <button class="btn sm" onclick="saveExh()">저장</button></div>
+  <div class="card"><h2>저장 모드</h2><p class="sub">${useFB?"✅ Firebase 서버 연결됨 — 모든 기기의 기록이 실시간 공유됩니다.":"⚠️ 기기저장 모드 — 이 기기에만 저장됩니다. firebase-config.js 를 설정하면 전 직원 기록이 공유됩니다 (가이드 참고)."}</p></div>
+  <button class="btn red" onclick="logout()">로그아웃</button>`;
+}
+async function chAdmin(){
+  const id=$("#nadId").value.trim(), p=$("#nadPw").value;
+  if(!id) return toast("ID를 입력하세요");
+  const patch={adminId:id}; if(p){ if(p.length<4) return toast("PW는 4자 이상"); patch.adminPw=p; }
+  await saveSettings(patch); Object.assign(SETTINGS,patch); toast("관리자 계정 변경됨");
+}
+async function saveExh(){ await saveSettings({extraHolidays:$("#exh").value.trim()}); SETTINGS.extraHolidays=$("#exh").value.trim(); toast("저장됨"); }
+
+/* ═══════════ 시작 ═══════════ */
+(async function(){
+  try{ await ensureSeed(); await loadCore(); }catch(e){ console.warn(e); }
+  loadSession();
+  if(SESSION) enterApp(true); else renderLogin();
+  if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+})();
+</script>
+</body>
+</html>
