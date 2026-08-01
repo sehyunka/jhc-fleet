@@ -256,7 +256,10 @@ const fmt=n=>n==null||n===""?"-":Number(n).toLocaleString();
 function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",2500);}
 function modal(html){$("#modal-root").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">'+html+'</div></div>';}
 function closeModal(){$("#modal-root").innerHTML="";}
-async function vehicleTrips(plate){ return (await dbAll("trips")).filter(t=>t.vehicle===plate); }
+async function vehicleTrips(plate){
+  if(!canAccessVehicle(plate)) return [];
+  return (await dbAll("trips")).filter(t=>t.vehicle===plate);
+}
 function lastKm(trips){ let m=0; for(const t of trips){ if(t.endKm&&+t.endKm>m)m=+t.endKm; if(t.startKm&&+t.startKm>m)m=+t.startKm;} return m; }
 function openTrip(trips){ return trips.filter(t=>t.status==="운행중").sort((a,b)=>(b.date+b.startTime).localeCompare(a.date+a.startTime))[0]; }
 
@@ -264,7 +267,7 @@ function openTrip(trips){ return trips.filter(t=>t.status==="운행중").sort((a
 let SESSION=null;
 function saveSession(){ localStorage.setItem("jhc2_sess",JSON.stringify(SESSION)); }
 function loadSession(){ try{SESSION=JSON.parse(localStorage.getItem("jhc2_sess"))}catch(e){SESSION=null} }
-function isAdmin(){ return SESSION&&SESSION.role==="admin"; }
+function isAdmin(){ return SESSION&&SESSION.role==="admin"&&SESSION.aid==="__admin"; }
 function renderLogin(msg){
   document.body.classList.remove("inapp");
   const navEl=$("#navbar"); if(navEl) navEl.innerHTML="";
@@ -347,7 +350,23 @@ function closeNotice(id){
 /* ═══════════ 권한: 조회 가능 차량 ═══════════ */
 function visibleVehicles(){
   if(isAdmin()) return VEHICLES;
-  return VEHICLES.filter(v=>v.type==="공용"||v.plate===SESSION.vehicle);
+  const assignedPlate=SESSION?.vehicle||"";
+  return assignedPlate?VEHICLES.filter(v=>v.plate===assignedPlate):[];
+}
+function canAccessVehicle(plate){
+  return !!plate&&(isAdmin()||plate===SESSION?.vehicle);
+}
+function denyVehicleAccess(){ toast("지정되지 않은 차량에는 접근할 수 없습니다."); }
+function syncSessionAccount(){
+  if(!SESSION||isAdmin()) return true;
+  const acc=ACCOUNTS.find(a=>a.id===SESSION.aid);
+  if(!acc){ logout(); return false; }
+  SESSION={aid:acc.id,name:acc.name,dept:acc.dept,role:"user",vehicle:acc.vehicle||""};
+  saveSession();
+  const nameEl=$("#uName"),deptEl=$("#uDept");
+  if(nameEl) nameEl.textContent=SESSION.name;
+  if(deptEl) deptEl.textContent=SESSION.dept||"재현하늘창";
+  return true;
 }
 
 /* ═══════════ 라우팅 ═══════════ */
@@ -358,7 +377,11 @@ async function nav(v){
   VIEW=activeV; updateShellMeta(activeV);
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("act",b.dataset.v===activeV));
   $("#app").innerHTML="<div class='card'><div class='empty-state'>데이터를 불러오는 중입니다…</div></div>";
-  try{ await loadCore(); await ({home:vHome,drive:vDrive,shared:vDrive,vehicles:vVehicles,maint:vMaint,history:vHistory,admin:vAdmin,my:vMy})[activeV](); }
+  try{
+    await loadCore();
+    if(!syncSessionAccount()) return;
+    await ({home:vHome,drive:vDrive,shared:vDrive,vehicles:vVehicles,maint:vMaint,history:vHistory,admin:vAdmin,my:vMy})[activeV]();
+  }
   catch(e){ $("#app").innerHTML=`<div class='banner warn'>오류: ${esc(e.message)}</div>`; }
 }
 function offBanner(){ return isOffday(todayStr())?`<div class="banner warn">⚠️ 오늘은 휴무일(토·일·공휴일)입니다.<br>법인차량 운행은 사전 승인된 경우만 가능합니다.</div>`:""; }
@@ -438,7 +461,7 @@ async function vHome(){
   const maintNeeded=states.filter(x=>x.state.level==="due"||x.state.level==="warn");
   const recent=trips.slice().sort((a,b)=>(b.date+(b.startTime||"")).localeCompare(a.date+(a.startTime||""))).slice(0,6);
   const alerts=states.flatMap(x=>x.state.maint.alerts.filter(a=>a.level==="due"||a.level==="warn").map(a=>({...a,vehicle:x.v}))).sort((a,b)=>(a.level==="due"?-1:1)-(b.level==="due"?-1:1)).slice(0,6);
-  const scopeLabel=isAdmin()?"등록 차량":"조회 가능 차량";
+  const scopeLabel=isAdmin()?"등록 차량":"지정 차량";
   $("#app").innerHTML=offBanner()+`
   <div class="metrics-grid">
     <div class="metric-card"><div class="metric-label">${scopeLabel}</div><div class="metric-value">${scope.length}<small>대</small></div><div class="metric-note">활성 차량 기준</div></div>
@@ -448,7 +471,7 @@ async function vHome(){
   </div>
   <div class="quick-action"><div><h2>빠른 운행 입력</h2><p>차량을 선택하고 계기판 거리와 목적을 기록합니다.</p></div><button class="btn" onclick="nav('drive')">운행 입력 시작</button></div>
   <div class="dashboard-grid">
-    <section class="panel"><div class="panel-head"><div><h2>최근 운행 기록</h2><p class="sub">조회 권한이 있는 차량의 최신 기록입니다.</p></div><button class="btn sm sec" onclick="nav('history')">전체 보기</button></div>
+    <section class="panel"><div class="panel-head"><div><h2>최근 운행 기록</h2><p class="sub">현재 권한 범위 내 차량의 최신 기록입니다.</p></div><button class="btn sm sec" onclick="nav('history')">전체 보기</button></div>
       ${recent.length?`<div class="activity-list">${recent.map(t=>`<div class="activity-row"><div><strong>${esc(t.vehicle)}</strong><div class="sub">${esc(t.model||"")}</div></div><div>${statusBadge({level:t.status==="운행중"?"run":"ok",label:t.status})}</div><div>${esc(t.user||"-")}</div><div>${esc(t.date)} · ${t.status==="운행중"?esc(t.startTime||""):fmt(t.dist)+" km"}</div></div>`).join("")}</div>`:`<div class="empty-state"><strong>운행 기록 없음</strong>저장된 실제 운행 기록이 없습니다.</div>`}
     </section>
     <section class="panel"><div class="panel-head"><div><h2>정비 알림</h2><p class="sub">권장 주기와 실제 교체 이력을 비교합니다.</p></div><button class="btn sm sec" onclick="nav('maint')">정비 관리</button></div>
@@ -456,7 +479,7 @@ async function vHome(){
     </section>
   </div>
   <section class="panel"><div class="panel-head"><div><h2>차량별 상태</h2><p class="sub">운행 기록과 정비 이력으로 계산한 현재 상태입니다.</p></div><button class="btn sm sec" onclick="nav('vehicles')">차량 전체 보기</button></div>
-    ${states.length?`<div class="fleet-grid">${states.slice(0,6).map(x=>{const owner=ACCOUNTS.find(a=>a.vehicle===x.v.plate),vt=trips.filter(t=>t.vehicle===x.v.plate);return `<div class="fleet-card"><div class="fleet-card-top"><div><div class="plate">${esc(x.v.plate)}</div><div class="sub">${esc(x.v.model)} · ${esc(x.v.type)}</div></div>${statusBadge(x.state)}</div><div class="fleet-meta"><div><span>담당</span><strong>${owner?esc(owner.name):x.v.type==="공용"?"공용 차량":"미지정"}</strong></div><div><span>누적 주행</span><strong>${fmt(lastKm(vt))} km</strong></div></div></div>`}).join("")}</div>`:`<div class="empty-state"><strong>조회 차량 없음</strong>현재 계정에서 조회 가능한 차량이 없습니다.</div>`}
+    ${states.length?`<div class="fleet-grid">${states.slice(0,6).map(x=>{const owner=ACCOUNTS.find(a=>a.vehicle===x.v.plate),vt=trips.filter(t=>t.vehicle===x.v.plate);return `<div class="fleet-card"><div class="fleet-card-top"><div><div class="plate">${esc(x.v.plate)}</div><div class="sub">${esc(x.v.model)} · ${esc(x.v.type)}</div></div>${statusBadge(x.state)}</div><div class="fleet-meta"><div><span>담당</span><strong>${owner?esc(owner.name):x.v.type==="공용"?"공용 차량":"미지정"}</strong></div><div><span>누적 주행</span><strong>${fmt(lastKm(vt))} km</strong></div></div></div>`}).join("")}</div>`:`<div class="empty-state"><strong>지정 차량 없음</strong>현재 계정에 지정된 차량이 없습니다.</div>`}
   </section>`;
 }
 
@@ -474,13 +497,14 @@ async function vDrive(){
     <div class="metric-card ${ot?"active":""}"><div class="metric-label">차량 상태</div><div class="metric-value" style="font-size:22px">${ot?"운행 중":"운행 가능"}</div><div class="metric-note">${ot?esc(ot.user)+" · "+esc(ot.startTime):"미종료 기록 없음"}</div></div>
     <div class="metric-card"><div class="metric-label">금일 운행</div><div class="metric-value">${vt.filter(t=>t.date===todayStr()).length}<small>건</small></div><div class="metric-note">선택 차량 기준</div></div>
   </div>
-  <section class="panel"><div class="panel-head"><div><h2>운행 차량 선택</h2><p class="sub">전용차량과 이용 가능한 공용차량을 선택할 수 있습니다.</p></div></div>
+  <section class="panel"><div class="panel-head"><div><h2>운행 차량 선택</h2><p class="sub">현재 계정에 지정된 차량만 선택할 수 있습니다.</p></div></div>
     <label for="driveVehicle">차량</label><select id="driveVehicle" onchange="drivePlate=this.value;renderDriveForm()">${vlist.map(x=>`<option value="${esc(x.plate)}" ${x.plate===drivePlate?"selected":""}>${esc(x.plate)} · ${esc(x.model)} · ${esc(x.type)}</option>`).join("")}</select>
   </section><div id="driveForm"></div>`;
   await renderDriveForm();
 }
 async function renderDriveForm(){
-  const v=VEHICLES.find(x=>x.plate===drivePlate); if(!v) return;
+  if(!canAccessVehicle(drivePlate)) return denyVehicleAccess();
+  const v=visibleVehicles().find(x=>x.plate===drivePlate); if(!v) return;
   const vt=await vehicleTrips(v.plate), ot=openTrip(vt), cur=lastKm(vt), canEnd=ot&&(ot.uid===SESSION.aid||isAdmin()), pub=v.type==="공용";
   const el=$("#driveForm"); if(!el) return;
   if(ot){
@@ -499,7 +523,8 @@ async function renderDriveForm(){
 }
 function calcDist(s){ const e=+$("#endKm").value; $("#distView").innerHTML=e>s?`운행거리: <b>${fmt(e-s)} km</b>`:"운행거리: - km"; }
 async function startDrive(plate,pubRequired){
-  const v=VEHICLES.find(x=>x.plate===plate);
+  if(!canAccessVehicle(plate)) return denyVehicleAccess();
+  const v=visibleVehicles().find(x=>x.plate===plate); if(!v) return denyVehicleAccess();
   const dept=$("#drvDept")?$("#drvDept").value:SESSION.dept;
   const name=$("#drvName")?$("#drvName").value:SESSION.name;
   const km=$("#startKm").value, pur=($("#purpose")?$("#purpose").value.trim():"");
@@ -512,6 +537,9 @@ async function startDrive(plate,pubRequired){
   toast(off?"⚠️ 휴무일 운행 시작 기록됨":"운행 시작 기록됨"); nav(VIEW);
 }
 async function endDrive(id,startKm){
+  const trip=(await dbAll("trips")).find(t=>t.id===id);
+  if(!trip||!canAccessVehicle(trip.vehicle)) return denyVehicleAccess();
+  if(!isAdmin()&&trip.uid!==SESSION.aid) return toast("본인이 시작한 운행만 종료할 수 있습니다");
   const e=+$("#endKm").value;
   if(!e) return toast("종료 키로수를 입력하세요");
   if(e<=startKm) return toast("종료 키로수는 시작보다 커야 합니다");
@@ -522,6 +550,7 @@ async function endDrive(id,startKm){
 /* ═══════════ 공용차량 ═══════════ */
 let shDept="",shPlate="";
 async function vShared(){
+  return vDrive();
   const pubs=VEHICLES.filter(v=>v.type==="공용");
   const depts=[...new Set(pubs.map(v=>v.dept))];
   if(!shDept||!depts.includes(shDept)) shDept=depts[0]||"";
@@ -543,7 +572,8 @@ async function vShared(){
   if(shPlate) renderSharedForm();
 }
 async function renderSharedForm(){
-  const v=VEHICLES.find(x=>x.plate===shPlate); if(!v) return;
+  if(!canAccessVehicle(shPlate)) return denyVehicleAccess();
+  const v=visibleVehicles().find(x=>x.plate===shPlate); if(!v) return;
   const vt=await vehicleTrips(shPlate); const ot=openTrip(vt), cur=lastKm(vt);
   const el=$("#shForm"); if(!el) return;
   const canEnd=ot&&(ot.uid===SESSION.aid||isAdmin());
@@ -578,7 +608,7 @@ async function vVehicles(){
   const filtered=rows.filter(x=>(!q||[x.v.plate,x.v.model,x.v.dept,x.owner?.name].some(s=>String(s||"").toLowerCase().includes(q)))&&(vehicleStatusFilter==="all"||x.state.level===vehicleStatusFilter||(vehicleStatusFilter==="attention"&&(x.state.level==="due"||x.state.level==="warn"))));
   const available=rows.filter(x=>x.state.level==="ok"||x.state.level==="unknown").length, running=rows.filter(x=>x.state.level==="run").length, attention=rows.filter(x=>x.state.level==="due"||x.state.level==="warn").length;
   $("#app").innerHTML=`
-  <div class="metrics-grid"><div class="metric-card"><div class="metric-label">조회 차량</div><div class="metric-value">${rows.length}<small>대</small></div><div class="metric-note">현재 계정 권한 기준</div></div><div class="metric-card"><div class="metric-label">운행 가능</div><div class="metric-value">${available}<small>대</small></div><div class="metric-note">운행 중 기록 없음</div></div><div class="metric-card active"><div class="metric-label">운행 중</div><div class="metric-value">${running}<small>대</small></div><div class="metric-note">미종료 기록 기준</div></div><div class="metric-card ${attention?"alert":""}"><div class="metric-label">정비 확인</div><div class="metric-value">${attention}<small>대</small></div><div class="metric-note">실제 교체 이력 기준</div></div></div>
+  <div class="metrics-grid"><div class="metric-card"><div class="metric-label">${isAdmin()?"등록 차량":"지정 차량"}</div><div class="metric-value">${rows.length}<small>대</small></div><div class="metric-note">현재 계정 권한 기준</div></div><div class="metric-card"><div class="metric-label">운행 가능</div><div class="metric-value">${available}<small>대</small></div><div class="metric-note">운행 중 기록 없음</div></div><div class="metric-card active"><div class="metric-label">운행 중</div><div class="metric-value">${running}<small>대</small></div><div class="metric-note">미종료 기록 기준</div></div><div class="metric-card ${attention?"alert":""}"><div class="metric-label">정비 확인</div><div class="metric-value">${attention}<small>대</small></div><div class="metric-note">실제 교체 이력 기준</div></div></div>
   <section class="panel"><div class="panel-head"><div><h2>차량 검색</h2><p class="sub">차량번호, 차종, 부서 또는 지정 운전자로 검색합니다.</p></div>${isAdmin()?`<button class="btn sm" onclick="aTab='veh';nav('admin')">차량 추가·수정</button>`:""}</div>
     <div class="filter-bar"><div><label for="vehicleSearch">검색어</label><input id="vehicleSearch" value="${esc(vehicleQuery)}" placeholder="차량번호 또는 차종"></div><div><label for="vehicleStatus">차량 상태</label><select id="vehicleStatus"><option value="all" ${vehicleStatusFilter==="all"?"selected":""}>전체 상태</option><option value="ok" ${vehicleStatusFilter==="ok"?"selected":""}>운행 가능</option><option value="run" ${vehicleStatusFilter==="run"?"selected":""}>운행 중</option><option value="attention" ${vehicleStatusFilter==="attention"?"selected":""}>정비 확인</option><option value="unknown" ${vehicleStatusFilter==="unknown"?"selected":""}>점검 이력 없음</option></select></div><div><button class="btn" onclick="applyVehicleFilters()">필터 적용</button></div><div><button class="btn sec" onclick="resetVehicleFilters()">초기화</button></div></div>
   </section>
@@ -653,6 +683,7 @@ function maintDetail(r){
   return s.join(" / ");
 }
 function maintForm(item,cur){
+  if(!canAccessVehicle(mPlate)) return denyVehicleAccess();
   const tire=item==="타이어";
   modal(`<h3>🔧 ${esc(item)} 교체 기록</h3><p class="sub">${esc(mPlate)} · 입력 후에는 수정할 수 없으니 정확히 입력하세요.</p>
   <label>교체 일자</label><input type="date" id="mDate" value="${todayStr()}">
@@ -666,6 +697,7 @@ function maintForm(item,cur){
   <button class="btn sec" onclick="closeModal()">취소</button>`);
 }
 async function saveMaint(item,tire){
+  if(!canAccessVehicle(mPlate)) return denyVehicleAccess();
   const d=$("#mDate").value,k=$("#mKm").value;
   if(!d||!k) return toast("일자와 키로수를 입력하세요");
   const rec={vehicle:mPlate,item,date:d,km:+k,shop:$("#mShop").value.trim(),cost:+($("#mCost").value||0),memo:$("#mMemo").value.trim(),uid:SESSION.aid,by:SESSION.name};
@@ -676,7 +708,7 @@ async function saveMaint(item,tire){
   closeModal(); toast("교체 기록 저장됨"); nav("maint");
 }
 
-/* ═══════════ 기록 (본인 차량 + 공용만) ═══════════ */
+/* ═══════════ 기록 (관리자 전체 · 담당자 지정 차량만) ═══════════ */
 let historyFilters={vehicle:"",user:"",from:"",to:""};
 function applyHistoryFilters(){
   historyFilters={vehicle:$("#historyVehicle")?.value||"",user:$("#historyUser")?.value||"",from:$("#historyFrom")?.value||"",to:$("#historyTo")?.value||""}; nav("history");
@@ -715,7 +747,7 @@ async function vMy(){
   $("#app").innerHTML=`
   <div class="card"><h2>👤 내 정보</h2>
     <p style="font-size:15px;margin:6px 0"><b>${esc(SESSION.name)}</b> · ${esc(SESSION.dept)}</p>
-    <p class="sub">지정 전용차량: ${v?esc(v.plate)+" ("+esc(v.model)+")":"없음"}</p>
+    <p class="sub">지정 차량: ${v?esc(v.plate)+" ("+esc(v.model)+")":"없음"}</p>
     <p class="sub">차량 지정 변경·부서 이동은 총무부에 문의하세요.</p></div>
   <div class="card"><h2>비밀번호 변경</h2>
     <label>현재 비밀번호</label><input type="password" id="cpw">
@@ -898,14 +930,14 @@ async function aAcc(){
 function accForm(id){
   const a=id?ACCOUNTS.find(x=>x.id===id):{name:"",userId:"",dept:"",vehicle:""};
   const assigned=new Set(ACCOUNTS.filter(x=>x.id!==id&&x.vehicle).map(x=>x.vehicle));
-  const opts=VEHICLES.filter(v=>v.type==="전용"&&(!assigned.has(v.plate)||v.plate===a.vehicle));
+  const opts=VEHICLES.filter(v=>!assigned.has(v.plate)||v.plate===a.vehicle);
   modal(`<h3>${id?"계정 수정 (부서이동·차량지정)":"계정 추가"}</h3>
   <label>이름</label><input id="aN" value="${esc(a.name)}">
   <label>ID</label><input id="aI" value="${esc(a.userId)}" placeholder="비우면 이름과 동일">
   ${id?"":`<label>초기 PW</label><input id="aP" placeholder="비우면 이름과 동일">`}
   <label>부서</label><input id="aD" value="${esc(a.dept)}" list="deptListA">
   <datalist id="deptListA">${[...new Set(ACCOUNTS.map(x=>x.dept).concat(Object.keys(SEED_ORG)))].map(d=>`<option value="${esc(d)}">`).join("")}</datalist>
-  <label>지정 전용차량</label><select id="aV"><option value="">없음 (공용만 이용)</option>${opts.map(v=>`<option value="${esc(v.plate)}" ${v.plate===a.vehicle?"selected":""}>${esc(v.plate)} ${esc(v.model)}</option>`).join("")}</select>
+  <label>지정 차량</label><select id="aV"><option value="">없음 (차량 접근 불가)</option>${opts.map(v=>`<option value="${esc(v.plate)}" ${v.plate===a.vehicle?"selected":""}>${esc(v.plate)} ${esc(v.model)} · ${esc(v.type)}</option>`).join("")}</select>
   <button class="btn" onclick="saveAcc('${id||""}')">저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
 }
 async function saveAcc(id){
