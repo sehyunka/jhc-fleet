@@ -66,6 +66,7 @@ input[readonly]{background:#f1f4f6;color:#5c6a75}
 .activity-list,.alert-list{display:flex;flex-direction:column}.activity-row,.alert-row{display:grid;grid-template-columns:minmax(110px,1.1fr) minmax(78px,.75fr) minmax(88px,.8fr) minmax(110px,1fr);gap:12px;align-items:center;padding:13px 2px;border-bottom:1px solid #e6ebee;font-size:13px}.activity-row:last-child,.alert-row:last-child{border-bottom:0}.activity-row strong{color:var(--navy)}
 .alert-row{grid-template-columns:1fr auto}.alert-row .sub{margin-top:4px}
 .quick-action{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px;border-radius:14px;background:linear-gradient(135deg,var(--navy),var(--navy-2));color:#fff;margin-bottom:16px}.quick-action h2{color:#fff;margin:0 0 4px}.quick-action p{font-size:12px;color:#cbd9e5}.quick-action .btn{width:auto;margin:0;background:var(--teal);white-space:nowrap}
+.assignment-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:280px;overflow:auto;padding:10px;border:1px solid var(--bd);border-radius:12px;background:#f8fafb}.assignment-item{display:flex;align-items:flex-start;gap:8px;padding:9px;border:1px solid transparent;border-radius:10px;background:#fff;cursor:pointer}.assignment-item:has(input:checked){border-color:var(--teal);background:var(--teal-soft)}.assignment-item input{width:auto;margin:3px 0 0}.assignment-item strong{display:block;font-size:13px}.assignment-item small{display:block;color:var(--mut);font-size:11px;margin-top:2px}.assignment-count{display:flex;justify-content:space-between;align-items:center;margin:8px 0 6px;font-size:12px;color:var(--mut)}
 .status-pill,.tag{display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:10px;padding:4px 8px;border-radius:999px;font-weight:800;white-space:nowrap}
 .status-pill.ok,.tag.pub{background:#e3f4ed;color:#14704f}.status-pill.run{background:#dff6f4;color:#087b73}.status-pill.warn,.tag.off{background:#fff1df;color:#9a5b06}.status-pill.due{background:#fde8e9;color:#aa343a}.status-pill.unknown,.tag.prv{background:#edf1f3;color:#65737f}
 .fleet-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.fleet-card{padding:17px;border:1px solid var(--bd);border-radius:14px;background:#fff}.fleet-card-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.fleet-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px;padding-top:13px;border-top:1px solid #e8ecef}.fleet-meta span{display:block;font-size:10px;color:var(--mut);margin-bottom:2px}.fleet-meta strong{font-size:12px;color:#344553}
@@ -89,7 +90,7 @@ nav button{position:relative;display:flex;align-items:center;gap:12px;width:100%
 .login-card{position:relative;overflow:hidden;background:rgba(255,255,255,.94);border:1px solid rgba(255,255,255,.98);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:20px;padding:34px 30px 28px;width:100%;max-width:390px;box-shadow:0 22px 60px rgba(36,70,94,.2)}
 .login-card::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,var(--teal),var(--lime))}.login-card img{display:block;margin:0 auto 12px;max-width:220px;height:auto}.login-kicker{text-align:center;margin:0 0 21px;color:#607588;font-size:10px;font-weight:800;letter-spacing:2.1px}.login-card label{color:#40566a}.login-card .btn{background:linear-gradient(135deg,var(--navy),#1b5962)!important}.login-card .chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);margin-top:10px}.login-card .chk input{width:auto}.login-card .note{margin-top:18px;background:linear-gradient(135deg,var(--navy),#173b56);color:#edf5f7;border-left:4px solid var(--teal);border-radius:11px;padding:13px 14px;font-size:12px;line-height:1.6}
 @media(max-width:1150px){.metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fleet-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-grid{grid-template-columns:1fr}.filter-bar{grid-template-columns:1fr 1fr}}
-@media(max-width:900px){body.inapp{padding-left:0;padding-bottom:78px}header{min-height:76px;padding:12px 15px}.header-kicker{display:none}header h1{font-size:18px}.header-desc{font-size:11px}.user-copy{display:none}.logout-btn{padding:8px 10px}main{padding:16px 14px 106px}nav{top:auto;right:0;width:auto;height:76px;padding:6px max(6px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-left));background:rgba(255,255,255,.98);border-top:1px solid var(--bd);border-right:0;box-shadow:0 -6px 24px rgba(13,35,51,.08);flex-direction:row;align-items:stretch;overflow-x:auto}.nav-brand{display:none}nav button{flex:1;min-width:58px;justify-content:center;flex-direction:column;gap:2px;padding:6px 4px;margin:0;color:#71808e;text-align:center;border-radius:10px;font-size:9px}nav button.act{background:var(--teal-soft);color:var(--navy)}nav button.act::before{display:none}.nav-icon{width:auto;height:20px;font-size:17px;color:inherit}.nav-label{font-size:9px;white-space:nowrap}#toast{left:50%;bottom:90px;max-width:calc(100vw - 28px);white-space:normal;text-align:center}.modal-bg{align-items:flex-end;padding:0}.modal{border-radius:18px 18px 0 0;padding:20px 16px calc(26px + env(safe-area-inset-bottom));max-height:90vh}.quick-action{align-items:flex-start;flex-direction:column}.quick-action .btn{width:100%}.table-card .tbl-wrap.desktop-table{display:none}.mobile-list{display:block}.filter-bar{grid-template-columns:1fr 1fr}.activity-row{grid-template-columns:1fr auto}.activity-row>:nth-child(3),.activity-row>:nth-child(4){display:none}}
+@media(max-width:900px){body.inapp{padding-left:0;padding-bottom:78px}header{min-height:76px;padding:12px 15px}.header-kicker{display:none}header h1{font-size:18px}.header-desc{font-size:11px}.user-copy{display:none}.logout-btn{padding:8px 10px}main{padding:16px 14px 106px}nav{top:auto;right:0;width:auto;height:76px;padding:6px max(6px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-left));background:rgba(255,255,255,.98);border-top:1px solid var(--bd);border-right:0;box-shadow:0 -6px 24px rgba(13,35,51,.08);flex-direction:row;align-items:stretch;overflow-x:auto}.nav-brand{display:none}nav button{flex:1;min-width:58px;justify-content:center;flex-direction:column;gap:2px;padding:6px 4px;margin:0;color:#71808e;text-align:center;border-radius:10px;font-size:9px}nav button.act{background:var(--teal-soft);color:var(--navy)}nav button.act::before{display:none}.nav-icon{width:auto;height:20px;font-size:17px;color:inherit}.nav-label{font-size:9px;white-space:nowrap}#toast{left:50%;bottom:90px;max-width:calc(100vw - 28px);white-space:normal;text-align:center}.modal-bg{align-items:flex-end;padding:0}.modal{border-radius:18px 18px 0 0;padding:20px 16px calc(26px + env(safe-area-inset-bottom));max-height:90vh}.quick-action{align-items:flex-start;flex-direction:column}.quick-action .btn{width:100%}.assignment-list{grid-template-columns:1fr}.table-card .tbl-wrap.desktop-table{display:none}.mobile-list{display:block}.filter-bar{grid-template-columns:1fr 1fr}.activity-row{grid-template-columns:1fr auto}.activity-row>:nth-child(3),.activity-row>:nth-child(4){display:none}}
 @media(max-width:620px){.metrics-grid{grid-template-columns:1fr 1fr;gap:10px}.metric-card{min-height:112px;padding:14px}.metric-value{font-size:24px;margin-top:11px}.fleet-grid{grid-template-columns:1fr}.form-grid,.filter-bar{grid-template-columns:1fr}.form-grid .span-2{grid-column:auto}.row{flex-direction:column;gap:0}.stat{grid-template-columns:1fr 1fr}.card,.panel{padding:16px;border-radius:14px}.dashboard-grid{gap:12px}#login{justify-content:center;align-items:flex-start;padding:clamp(28px,8vh,72px) 16px 24px;background-position:34% center}#login::before{background:rgba(244,250,253,.34)}.login-card{max-width:420px;padding:30px 22px 24px;border-radius:18px}.login-card img{max-width:200px}}
 @media print{header,nav,.tabs,#toast,.stat,button{display:none!important}body,body.inapp{padding:0;background:#fff}.card,.panel{box-shadow:none;border:0}main{padding:0;max-width:none}#aBody>.card:first-child{display:none}}
 </style>
@@ -268,6 +269,18 @@ let SESSION=null;
 function saveSession(){ localStorage.setItem("jhc2_sess",JSON.stringify(SESSION)); }
 function loadSession(){ try{SESSION=JSON.parse(localStorage.getItem("jhc2_sess"))}catch(e){SESSION=null} }
 function isAdmin(){ return SESSION&&SESSION.role==="admin"&&SESSION.aid==="__admin"; }
+const MAX_ASSIGNED_VEHICLES=3;
+function accountVehiclePlates(account){
+  if(!account) return [];
+  const raw=Array.isArray(account.vehicles)&&account.vehicles.length?account.vehicles:(account.vehicle?[account.vehicle]:[]);
+  return [...new Set(raw.filter(Boolean))].slice(0,MAX_ASSIGNED_VEHICLES);
+}
+function userSession(acc){
+  const vehicles=accountVehiclePlates(acc);
+  return {aid:acc.id,name:acc.name,dept:acc.dept,role:"user",vehicle:vehicles[0]||"",vehicles};
+}
+function vehicleOwners(plate){ return ACCOUNTS.filter(a=>accountVehiclePlates(a).includes(plate)); }
+function vehicleOwnerNames(plate){ return vehicleOwners(plate).map(a=>a.name).join(", "); }
 function renderLogin(msg){
   document.body.classList.remove("inapp");
   const navEl=$("#navbar"); if(navEl) navEl.innerHTML="";
@@ -290,12 +303,12 @@ async function doLogin(){
   await ensureSeed(); await loadCore();
   if($("#liSave").checked) localStorage.setItem("jhc2_saveid",id); else localStorage.removeItem("jhc2_saveid");
   if(id===SETTINGS.adminId&&pw===SETTINGS.adminPw){
-    SESSION={aid:"__admin",name:"총무부 관리자",dept:"인사총무팀",role:"admin",vehicle:""};
+    SESSION={aid:"__admin",name:"총무부 관리자",dept:"인사총무팀",role:"admin",vehicle:"",vehicles:[]};
     saveSession(); return enterApp(true);
   }
   const acc=ACCOUNTS.find(a=>a.userId===id&&a.pw===pw);
   if(!acc) return toast("ID 또는 비밀번호가 올바르지 않습니다");
-  SESSION={aid:acc.id,name:acc.name,dept:acc.dept,role:"user",vehicle:acc.vehicle||""};
+  SESSION=userSession(acc);
   saveSession(); enterApp(true);
 }
 function logout(){ SESSION=null; localStorage.removeItem("jhc2_sess"); renderLogin(); }
@@ -320,7 +333,9 @@ async function enterApp(showNotice){
   $("#uDept").textContent=SESSION.dept||"재현하늘창";
   $("#mode").textContent=useFB?"서버 공유":"기기 저장";
   $("#mode").className="badge"+(useFB?" on":"");
-  const items=[["home","▦","홈"],["drive","↗","운행 입력"],["vehicles","▤","차량 관리"],["maint","◇","정비 관리"],["history","≡","운행 기록"]];
+  const items=[["home","▦","홈"]];
+  if(!isAdmin()) items.push(["drive","↗","운행 입력"]);
+  items.push(["vehicles","▤","차량 관리"],["maint","◇","정비 관리"],["history","≡","운행 기록"]);
   items.push(isAdmin()?["admin","⚙","관리"]:["my","●","내 정보"]);
   $("#navbar").innerHTML=`<div class="nav-brand"><img src="icon-192.png" alt="재현하늘창 로고"><div><strong>JHC FLEET</strong><small>Fleet Command</small></div></div>`+
     items.map(i=>`<button data-v="${i[0]}" onclick="nav('${i[0]}')"><span class="nav-icon">${i[1]}</span><span class="nav-label">${i[2]}</span></button>`).join("");
@@ -350,18 +365,18 @@ function closeNotice(id){
 /* ═══════════ 권한: 조회 가능 차량 ═══════════ */
 function visibleVehicles(){
   if(isAdmin()) return VEHICLES;
-  const assignedPlate=SESSION?.vehicle||"";
-  return assignedPlate?VEHICLES.filter(v=>v.plate===assignedPlate):[];
+  const assigned=new Set(accountVehiclePlates(SESSION));
+  return VEHICLES.filter(v=>assigned.has(v.plate));
 }
 function canAccessVehicle(plate){
-  return !!plate&&(isAdmin()||plate===SESSION?.vehicle);
+  return !!plate&&(isAdmin()||accountVehiclePlates(SESSION).includes(plate));
 }
 function denyVehicleAccess(){ toast("지정되지 않은 차량에는 접근할 수 없습니다."); }
 function syncSessionAccount(){
   if(!SESSION||isAdmin()) return true;
   const acc=ACCOUNTS.find(a=>a.id===SESSION.aid);
   if(!acc){ logout(); return false; }
-  SESSION={aid:acc.id,name:acc.name,dept:acc.dept,role:"user",vehicle:acc.vehicle||""};
+  SESSION=userSession(acc);
   saveSession();
   const nameEl=$("#uName"),deptEl=$("#uDept");
   if(nameEl) nameEl.textContent=SESSION.name;
@@ -373,7 +388,8 @@ function syncSessionAccount(){
 let VIEW="home";
 async function nav(v){
   if(!SESSION) return renderLogin();
-  const activeV=v==="shared"?"drive":v;
+  const requestedV=v==="shared"?"drive":v;
+  const activeV=isAdmin()&&requestedV==="drive"?"home":requestedV;
   VIEW=activeV; updateShellMeta(activeV);
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("act",b.dataset.v===activeV));
   $("#app").innerHTML="<div class='card'><div class='empty-state'>데이터를 불러오는 중입니다…</div></div>";
@@ -469,7 +485,7 @@ async function vHome(){
     <div class="metric-card"><div class="metric-label">금일 운행</div><div class="metric-value">${today.length}<small>건</small></div><div class="metric-note">${fmt(today.reduce((s,t)=>s+(+t.dist||0),0))} km 완료·진행 합계</div></div>
     <div class="metric-card ${maintNeeded.length?"alert":""}"><div class="metric-label">정비 확인 필요</div><div class="metric-value">${maintNeeded.length}<small>대</small></div><div class="metric-note">교체 이력으로 계산 가능한 차량</div></div>
   </div>
-  <div class="quick-action"><div><h2>빠른 운행 입력</h2><p>차량을 선택하고 계기판 거리와 목적을 기록합니다.</p></div><button class="btn" onclick="nav('drive')">운행 입력 시작</button></div>
+  ${isAdmin()?"":`<div class="quick-action"><div><h2>빠른 운행 입력</h2><p>차량을 선택하고 계기판 거리와 목적을 기록합니다.</p></div><button class="btn" onclick="nav('drive')">운행 입력 시작</button></div>`}
   <div class="dashboard-grid">
     <section class="panel"><div class="panel-head"><div><h2>최근 운행 기록</h2><p class="sub">현재 권한 범위 내 차량의 최신 기록입니다.</p></div><button class="btn sm sec" onclick="nav('history')">전체 보기</button></div>
       ${recent.length?`<div class="activity-list">${recent.map(t=>`<div class="activity-row"><div><strong>${esc(t.vehicle)}</strong><div class="sub">${esc(t.model||"")}</div></div><div>${statusBadge({level:t.status==="운행중"?"run":"ok",label:t.status})}</div><div>${esc(t.user||"-")}</div><div>${esc(t.date)} · ${t.status==="운행중"?esc(t.startTime||""):fmt(t.dist)+" km"}</div></div>`).join("")}</div>`:`<div class="empty-state"><strong>운행 기록 없음</strong>저장된 실제 운행 기록이 없습니다.</div>`}
@@ -479,13 +495,14 @@ async function vHome(){
     </section>
   </div>
   <section class="panel"><div class="panel-head"><div><h2>차량별 상태</h2><p class="sub">운행 기록과 정비 이력으로 계산한 현재 상태입니다.</p></div><button class="btn sm sec" onclick="nav('vehicles')">차량 전체 보기</button></div>
-    ${states.length?`<div class="fleet-grid">${states.slice(0,6).map(x=>{const owner=ACCOUNTS.find(a=>a.vehicle===x.v.plate),vt=trips.filter(t=>t.vehicle===x.v.plate);return `<div class="fleet-card"><div class="fleet-card-top"><div><div class="plate">${esc(x.v.plate)}</div><div class="sub">${esc(x.v.model)} · ${esc(x.v.type)}</div></div>${statusBadge(x.state)}</div><div class="fleet-meta"><div><span>담당</span><strong>${owner?esc(owner.name):x.v.type==="공용"?"공용 차량":"미지정"}</strong></div><div><span>누적 주행</span><strong>${fmt(lastKm(vt))} km</strong></div></div></div>`}).join("")}</div>`:`<div class="empty-state"><strong>지정 차량 없음</strong>현재 계정에 지정된 차량이 없습니다.</div>`}
+    ${states.length?`<div class="fleet-grid">${states.slice(0,6).map(x=>{const owners=vehicleOwnerNames(x.v.plate),vt=trips.filter(t=>t.vehicle===x.v.plate);return `<div class="fleet-card"><div class="fleet-card-top"><div><div class="plate">${esc(x.v.plate)}</div><div class="sub">${esc(x.v.model)} · ${esc(x.v.type)}</div></div>${statusBadge(x.state)}</div><div class="fleet-meta"><div><span>담당</span><strong>${owners?esc(owners):x.v.type==="공용"?"공용 차량":"미지정"}</strong></div><div><span>누적 주행</span><strong>${fmt(lastKm(vt))} km</strong></div></div></div>`}).join("")}</div>`:`<div class="empty-state"><strong>지정 차량 없음</strong>현재 계정에 지정된 차량이 없습니다.</div>`}
   </section>`;
 }
 
 /* ═══════════ 운행 입력 ═══════════ */
 let drivePlate="";
 async function vDrive(){
+  if(isAdmin()){ nav("home"); return; }
   const vlist=visibleVehicles();
   if(!vlist.length){ $("#app").innerHTML=`<div class="card"><div class="empty-state"><strong>운행 가능한 차량 없음</strong>총무부에 차량 지정을 문의하세요.</div></div>`; return; }
   if(!drivePlate||!vlist.some(v=>v.plate===drivePlate)) drivePlate=SESSION.vehicle&&vlist.some(v=>v.plate===SESSION.vehicle)?SESSION.vehicle:vlist[0].plate;
@@ -603,9 +620,9 @@ function applyVehicleFilters(){
 function resetVehicleFilters(){ vehicleQuery=""; vehicleStatusFilter="all"; nav("vehicles"); }
 async function vVehicles(){
   const scope=visibleVehicles(), trips=await dbAll("trips"), recs=await dbAll("maintenance");
-  const rows=scope.map(v=>{const vt=trips.filter(t=>t.vehicle===v.plate),owner=ACCOUNTS.find(a=>a.vehicle===v.plate);return {v,vt,owner,state:vehicleOperationalState(v,trips,recs),km:lastKm(vt)};});
+  const rows=scope.map(v=>{const vt=trips.filter(t=>t.vehicle===v.plate),owners=vehicleOwnerNames(v.plate);return {v,vt,owners,state:vehicleOperationalState(v,trips,recs),km:lastKm(vt)};});
   const q=vehicleQuery.toLowerCase();
-  const filtered=rows.filter(x=>(!q||[x.v.plate,x.v.model,x.v.dept,x.owner?.name].some(s=>String(s||"").toLowerCase().includes(q)))&&(vehicleStatusFilter==="all"||x.state.level===vehicleStatusFilter||(vehicleStatusFilter==="attention"&&(x.state.level==="due"||x.state.level==="warn"))));
+  const filtered=rows.filter(x=>(!q||[x.v.plate,x.v.model,x.v.dept,x.owners].some(s=>String(s||"").toLowerCase().includes(q)))&&(vehicleStatusFilter==="all"||x.state.level===vehicleStatusFilter||(vehicleStatusFilter==="attention"&&(x.state.level==="due"||x.state.level==="warn"))));
   const available=rows.filter(x=>x.state.level==="ok"||x.state.level==="unknown").length, running=rows.filter(x=>x.state.level==="run").length, attention=rows.filter(x=>x.state.level==="due"||x.state.level==="warn").length;
   $("#app").innerHTML=`
   <div class="metrics-grid"><div class="metric-card"><div class="metric-label">${isAdmin()?"등록 차량":"지정 차량"}</div><div class="metric-value">${rows.length}<small>대</small></div><div class="metric-note">현재 계정 권한 기준</div></div><div class="metric-card"><div class="metric-label">운행 가능</div><div class="metric-value">${available}<small>대</small></div><div class="metric-note">운행 중 기록 없음</div></div><div class="metric-card active"><div class="metric-label">운행 중</div><div class="metric-value">${running}<small>대</small></div><div class="metric-note">미종료 기록 기준</div></div><div class="metric-card ${attention?"alert":""}"><div class="metric-label">정비 확인</div><div class="metric-value">${attention}<small>대</small></div><div class="metric-note">실제 교체 이력 기준</div></div></div>
@@ -613,7 +630,7 @@ async function vVehicles(){
     <div class="filter-bar"><div><label for="vehicleSearch">검색어</label><input id="vehicleSearch" value="${esc(vehicleQuery)}" placeholder="차량번호 또는 차종"></div><div><label for="vehicleStatus">차량 상태</label><select id="vehicleStatus"><option value="all" ${vehicleStatusFilter==="all"?"selected":""}>전체 상태</option><option value="ok" ${vehicleStatusFilter==="ok"?"selected":""}>운행 가능</option><option value="run" ${vehicleStatusFilter==="run"?"selected":""}>운행 중</option><option value="attention" ${vehicleStatusFilter==="attention"?"selected":""}>정비 확인</option><option value="unknown" ${vehicleStatusFilter==="unknown"?"selected":""}>점검 이력 없음</option></select></div><div><button class="btn" onclick="applyVehicleFilters()">필터 적용</button></div><div><button class="btn sec" onclick="resetVehicleFilters()">초기화</button></div></div>
   </section>
   <section class="panel table-card"><div class="panel-head" style="padding:20px 20px 0"><div><h2>차량 운영 목록</h2><p class="sub">검색 결과 ${filtered.length}대</p></div></div>
-    ${filtered.length?`<div class="tbl-wrap desktop-table"><table><thead><tr><th>차량번호</th><th>차종</th><th>소속</th><th>지정 운전자</th><th>누적 주행</th><th>상태</th></tr></thead><tbody>${filtered.map(x=>`<tr><td><b>${esc(x.v.plate)}</b><div class="sub">${esc(x.v.type)}</div></td><td>${esc(x.v.model)}</td><td>${esc(x.v.dept)}</td><td>${x.owner?esc(x.owner.name):x.v.type==="공용"?"공용":"미지정"}</td><td>${fmt(x.km)} km</td><td>${statusBadge(x.state)}</td></tr>`).join("")}</tbody></table></div><div class="mobile-list" style="padding:0 14px 14px">${filtered.map(x=>`<div class="mobile-record"><div class="mobile-record-head"><div><div class="plate">${esc(x.v.plate)}</div><div class="sub">${esc(x.v.model)} · ${esc(x.v.type)}</div></div>${statusBadge(x.state)}</div><div class="mobile-record-grid"><div><span>소속</span><strong>${esc(x.v.dept)}</strong></div><div><span>담당</span><strong>${x.owner?esc(x.owner.name):x.v.type==="공용"?"공용":"미지정"}</strong></div><div><span>누적 주행</span><strong>${fmt(x.km)} km</strong></div><div><span>최근 상태</span><strong>${esc(x.state.label)}</strong></div></div></div>`).join("")}</div>`:`<div class="empty-state"><strong>검색 결과 없음</strong>필터 조건을 변경해 주세요.</div>`}
+    ${filtered.length?`<div class="tbl-wrap desktop-table"><table><thead><tr><th>차량번호</th><th>차종</th><th>소속</th><th>지정 담당자</th><th>누적 주행</th><th>상태</th></tr></thead><tbody>${filtered.map(x=>`<tr><td><b>${esc(x.v.plate)}</b><div class="sub">${esc(x.v.type)}</div></td><td>${esc(x.v.model)}</td><td>${esc(x.v.dept)}</td><td>${x.owners?esc(x.owners):x.v.type==="공용"?"공용":"미지정"}</td><td>${fmt(x.km)} km</td><td>${statusBadge(x.state)}</td></tr>`).join("")}</tbody></table></div><div class="mobile-list" style="padding:0 14px 14px">${filtered.map(x=>`<div class="mobile-record"><div class="mobile-record-head"><div><div class="plate">${esc(x.v.plate)}</div><div class="sub">${esc(x.v.model)} · ${esc(x.v.type)}</div></div>${statusBadge(x.state)}</div><div class="mobile-record-grid"><div><span>소속</span><strong>${esc(x.v.dept)}</strong></div><div><span>담당</span><strong>${x.owners?esc(x.owners):x.v.type==="공용"?"공용":"미지정"}</strong></div><div><span>누적 주행</span><strong>${fmt(x.km)} km</strong></div><div><span>최근 상태</span><strong>${esc(x.state.label)}</strong></div></div></div>`).join("")}</div>`:`<div class="empty-state"><strong>검색 결과 없음</strong>필터 조건을 변경해 주세요.</div>`}
   </section>`;
 }
 
@@ -743,11 +760,11 @@ async function vHistoryLegacy(){
 
 /* ═══════════ 내정보 ═══════════ */
 async function vMy(){
-  const v=VEHICLES.find(x=>x.plate===SESSION.vehicle);
+  const assigned=visibleVehicles();
   $("#app").innerHTML=`
   <div class="card"><h2>👤 내 정보</h2>
     <p style="font-size:15px;margin:6px 0"><b>${esc(SESSION.name)}</b> · ${esc(SESSION.dept)}</p>
-    <p class="sub">지정 차량: ${v?esc(v.plate)+" ("+esc(v.model)+")":"없음"}</p>
+    <p class="sub">지정 차량 (${assigned.length}/${MAX_ASSIGNED_VEHICLES}대): ${assigned.length?assigned.map(v=>`${esc(v.plate)} (${esc(v.model)})`).join(", "):"없음"}</p>
     <p class="sub">차량 지정 변경·부서 이동은 총무부에 문의하세요.</p></div>
   <div class="card"><h2>비밀번호 변경</h2>
     <label>현재 비밀번호</label><input type="password" id="cpw">
@@ -808,7 +825,7 @@ async function dlExcel(){
   const s2=XLSX.utils.json_to_sheet(recs.map(r=>({차량번호:r.vehicle,항목:r.item,교체일:r.date,"교체시km":r.km,정비소:r.shop||"",비용:r.cost||"",타이어앞:r.tireF||"",타이어뒤:r.tireR||"",메모:r.memo||"",입력자:r.by||""})));
   s2["!cols"]=[{wch:11},{wch:10},{wch:11},{wch:10},{wch:14},{wch:10},{wch:8},{wch:8},{wch:20},{wch:8}];
   XLSX.utils.book_append_sheet(wb,s2,"소모품교체");
-  const s3=XLSX.utils.json_to_sheet(VEHICLES.map(v=>({차량번호:v.plate,차종:v.model,구분:v.cat,유형:v.type,부서:v.dept,지정사용자:(ACCOUNTS.find(a=>a.vehicle===v.plate)||{}).name||""})));
+  const s3=XLSX.utils.json_to_sheet(VEHICLES.map(v=>({차량번호:v.plate,차종:v.model,구분:v.cat,유형:v.type,부서:v.dept,지정사용자:vehicleOwnerNames(v.plate)})));
   s3["!cols"]=[{wch:11},{wch:14},{wch:6},{wch:6},{wch:16},{wch:10}];
   XLSX.utils.book_append_sheet(wb,s3,"차량현황");
   XLSX.writeFile(wb,`법인차량_전체기록_${todayStr().replace(/-/g,"")}.xlsx`);
@@ -894,7 +911,7 @@ async function dlBook(){
 async function aVeh(){
   $("#aBody").innerHTML=`<div class="card"><button class="btn sm grn" onclick="vehForm()">＋ 차량 추가</button></div>
   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>차량번호</th><th>차종</th><th>유형</th><th>부서</th><th>지정 사용자</th><th></th><th></th></tr></thead><tbody>
-  ${VEHICLES.map(v=>{const owner=ACCOUNTS.find(a=>a.vehicle===v.plate);return `<tr><td><b>${esc(v.plate)}</b></td><td>${esc(v.model)}</td><td><span class="tag ${v.type==="공용"?"pub":"prv"}">${esc(v.type)}</span></td><td>${esc(v.dept)}</td><td>${owner?esc(owner.name):"-"}</td>
+  ${VEHICLES.map(v=>{const owners=vehicleOwnerNames(v.plate);return `<tr><td><b>${esc(v.plate)}</b></td><td>${esc(v.model)}</td><td><span class="tag ${v.type==="공용"?"pub":"prv"}">${esc(v.type)}</span></td><td>${esc(v.dept)}</td><td>${owners?esc(owners):"-"}</td>
   <td><button class="btn sm sec" onclick="vehForm('${v.id}')">수정</button></td>
   <td><button class="btn sm red" onclick="if(confirm('${esc(v.plate)} 차량을 삭제(반납)할까요?\\n기존 기록은 유지됩니다.'))delVeh('${v.id}')">삭제</button></td></tr>`}).join("")}
   </tbody></table></div><p class="sub" style="margin-top:6px">개인별 차량 지정은 [계정] 탭에서 설정합니다.</p></div>`;
@@ -919,30 +936,43 @@ async function saveVeh(id){
 async function delVeh(id){ await dbUpd("vehicles",id,{active:false}); toast("차량 삭제(비활성) 처리됨"); nav("admin"); }
 async function aAcc(){
   $("#aBody").innerHTML=`<div class="card"><button class="btn sm grn" onclick="accForm()">＋ 계정 추가</button>
-  <p class="sub" style="margin-top:6px">초기 계정: ID=PW=이름 (조직도 기준, 회장님·사장님 제외) · 본인이 앱에서 PW 변경 가능</p></div>
+  <p class="sub" style="margin-top:6px">초기 계정: ID=PW=이름 (조직도 기준, 회장님·사장님 제외) · 지정 차량은 계정별 최대 ${MAX_ASSIGNED_VEHICLES}대 · 관리부서에서 변경</p></div>
   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>이름</th><th>ID</th><th>부서</th><th>지정차량</th><th></th><th></th><th></th></tr></thead><tbody>
-  ${ACCOUNTS.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.userId)}</td><td>${esc(a.dept)}</td><td>${a.vehicle?esc(a.vehicle):"-"}</td>
+  ${ACCOUNTS.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.userId)}</td><td>${esc(a.dept)}</td><td>${accountVehiclePlates(a).length?accountVehiclePlates(a).map(esc).join("<br>"):"-"}</td>
   <td><button class="btn sm sec" onclick="accForm('${a.id}')">수정</button></td>
   <td><button class="btn sm sec" onclick="if(confirm('${esc(a.name)} PW를 이름(초기값)으로 초기화할까요?'))resetPw('${a.id}','${esc(a.name)}')">PW초기화</button></td>
   <td><button class="btn sm red" onclick="if(confirm('${esc(a.name)} 계정을 삭제할까요?'))delAcc('${a.id}')">삭제</button></td></tr>`).join("")}
   </tbody></table></div></div>`;
 }
 function accForm(id){
-  const a=id?ACCOUNTS.find(x=>x.id===id):{name:"",userId:"",dept:"",vehicle:""};
-  const assigned=new Set(ACCOUNTS.filter(x=>x.id!==id&&x.vehicle).map(x=>x.vehicle));
-  const opts=VEHICLES.filter(v=>!assigned.has(v.plate)||v.plate===a.vehicle);
+  if(!isAdmin()) return toast("관리자만 차량 지정을 변경할 수 있습니다");
+  const a=id?ACCOUNTS.find(x=>x.id===id):{name:"",userId:"",dept:"",vehicle:"",vehicles:[]};
+  const current=new Set(accountVehiclePlates(a));
+  const assignedDedicated=new Set(ACCOUNTS.filter(x=>x.id!==id).flatMap(accountVehiclePlates));
+  const opts=VEHICLES.filter(v=>v.type==="공용"||!assignedDedicated.has(v.plate)||current.has(v.plate));
   modal(`<h3>${id?"계정 수정 (부서이동·차량지정)":"계정 추가"}</h3>
   <label>이름</label><input id="aN" value="${esc(a.name)}">
   <label>ID</label><input id="aI" value="${esc(a.userId)}" placeholder="비우면 이름과 동일">
   ${id?"":`<label>초기 PW</label><input id="aP" placeholder="비우면 이름과 동일">`}
   <label>부서</label><input id="aD" value="${esc(a.dept)}" list="deptListA">
   <datalist id="deptListA">${[...new Set(ACCOUNTS.map(x=>x.dept).concat(Object.keys(SEED_ORG)))].map(d=>`<option value="${esc(d)}">`).join("")}</datalist>
-  <label>지정 차량</label><select id="aV"><option value="">없음 (차량 접근 불가)</option>${opts.map(v=>`<option value="${esc(v.plate)}" ${v.plate===a.vehicle?"selected":""}>${esc(v.plate)} ${esc(v.model)} · ${esc(v.type)}</option>`).join("")}</select>
+  <div class="assignment-count"><label style="margin:0">지정 차량</label><strong id="aVCount">${current.size}/${MAX_ASSIGNED_VEHICLES}대 선택</strong></div>
+  <div class="assignment-list">${opts.map(v=>`<label class="assignment-item"><input type="checkbox" name="aVehicle" value="${esc(v.plate)}" ${current.has(v.plate)?"checked":""} onchange="limitVehicleChecks(this)"><span><strong>${esc(v.plate)} · ${esc(v.model)}</strong><small>${esc(v.type)} · ${esc(v.dept)}${v.type==="공용"?" · 중복 지정 가능":""}</small></span></label>`).join("")}</div>
+  <p class="field-help">최대 ${MAX_ASSIGNED_VEHICLES}대까지 선택할 수 있습니다. 전용차량은 한 계정에만 지정됩니다.</p>
   <button class="btn" onclick="saveAcc('${id||""}')">저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
 }
+function limitVehicleChecks(el){
+  const checked=[...document.querySelectorAll('input[name="aVehicle"]:checked')];
+  if(checked.length>MAX_ASSIGNED_VEHICLES){ el.checked=false; toast(`지정 차량은 최대 ${MAX_ASSIGNED_VEHICLES}대입니다`); }
+  const count=document.querySelectorAll('input[name="aVehicle"]:checked').length, out=$("#aVCount");
+  if(out) out.textContent=`${count}/${MAX_ASSIGNED_VEHICLES}대 선택`;
+}
 async function saveAcc(id){
+  if(!isAdmin()) return toast("관리자만 계정과 차량 지정을 저장할 수 있습니다");
   const name=$("#aN").value.trim(); if(!name) return toast("이름을 입력하세요");
-  const o={name,userId:($("#aI").value.trim()||name),dept:$("#aD").value.trim(),vehicle:$("#aV").value};
+  const vehicles=[...document.querySelectorAll('input[name="aVehicle"]:checked')].map(el=>el.value);
+  if(vehicles.length>MAX_ASSIGNED_VEHICLES) return toast(`지정 차량은 최대 ${MAX_ASSIGNED_VEHICLES}대입니다`);
+  const o={name,userId:($("#aI").value.trim()||name),dept:$("#aD").value.trim(),vehicle:vehicles[0]||"",vehicles};
   if(!o.dept) return toast("부서를 입력하세요");
   if(!id){ o.pw=($("#aP").value||name); const dup=ACCOUNTS.find(a=>a.userId===o.userId); if(dup) return toast("이미 존재하는 ID입니다"); await dbAdd("accounts",o); }
   else await dbUpd("accounts",id,o);
