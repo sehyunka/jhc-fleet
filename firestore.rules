@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 감사 로그는 앱에서 생성과 조회만 허용합니다.
+    // update/delete는 어떤 웹 클라이언트 요청에도 허용하지 않습니다.
+    match /auditLogs/{auditId} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+
+    // 기존 앱은 Firebase Auth 없이 자체 계정으로 동작하므로
+    // 기존 컬렉션의 현재 읽기/쓰기 동작을 그대로 유지합니다.
+    match /settings/{documentId} {
+      allow read, write: if true;
+    }
+    match /vehicles/{documentId} {
+      allow read, write: if true;
+    }
+    match /accounts/{documentId} {
+      allow read, write: if true;
+    }
+    match /users/{documentId} {
+      allow read, write: if true;
+    }
+    match /trips/{documentId} {
+      allow read, write: if true;
+    }
+    match /maintenance/{documentId} {
+      allow read, write: if true;
+    }
+    match /notices/{documentId} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -51,6 +51,7 @@ input[readonly]{background:#f1f4f6;color:#5c6a75}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.form-grid .span-2{grid-column:1/-1}
 .field-box{padding:11px 12px;border:1px solid var(--bd);border-radius:9px;background:#f6f8f9;font-size:14px;font-weight:700}
 .field-help{font-size:11px;color:var(--mut);margin-top:5px}
+.field-warning{font-size:11px;color:#a7353a;margin-top:6px;font-weight:700;line-height:1.55}
 .banner{border-radius:11px;padding:12px 14px;margin-bottom:14px;font-size:13px;font-weight:700;border:1px solid}
 .banner.warn{background:#fff6f6;color:#a7353a;border-color:#f1c5c8}.banner.info{background:#effbf9;color:#0d6c66;border-color:#bce6e2}
 .plate{font-size:21px;font-weight:900;letter-spacing:.4px;color:var(--navy)}
@@ -85,6 +86,8 @@ nav button{position:relative;display:flex;align-items:center;gap:12px;width:100%
 .modal-bg{position:fixed;inset:0;background:rgba(7,22,34,.58);z-index:40;display:flex;align-items:center;justify-content:center;padding:20px}.modal{background:#fff;border-radius:18px;padding:22px;width:100%;max-width:620px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 70px rgba(0,0,0,.25)}.modal h3{color:var(--navy);margin-bottom:6px}
 #toast{position:fixed;bottom:26px;left:calc(50% + 126px);transform:translateX(-50%);background:var(--navy);color:#fff;padding:11px 18px;border-radius:999px;font-size:13px;z-index:50;display:none;white-space:nowrap;box-shadow:var(--shadow)}
 .notice-body{white-space:pre-wrap;font-size:14px;line-height:1.7;margin:10px 0;max-height:45vh;overflow-y:auto}
+.audit-detail{margin-top:12px;padding:12px;border:1px solid var(--bd);border-radius:10px;background:#f7f9fa;color:#314457;font:11px/1.55 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:48vh;overflow:auto}
+.audit-change{display:block;max-width:360px;white-space:normal;line-height:1.45;color:#40566a}
 #login{min-height:100vh;display:flex;align-items:center;justify-content:flex-end;padding:32px clamp(44px,8vw,150px) 32px 24px;position:relative;isolation:isolate;background:#f7fbfd url("fleet-login-bg.png") center center/cover no-repeat}
 #login::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,0) 42%,rgba(255,255,255,.12) 58%,rgba(255,255,255,.55) 100%)}
 .login-card{position:relative;overflow:hidden;background:rgba(255,255,255,.94);border:1px solid rgba(255,255,255,.98);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:20px;padding:34px 30px 28px;width:100%;max-width:390px;box-shadow:0 22px 60px rgba(36,70,94,.2)}
@@ -269,6 +272,7 @@ let SESSION=null;
 function saveSession(){ localStorage.setItem("jhc2_sess",JSON.stringify(SESSION)); }
 function loadSession(){ try{SESSION=JSON.parse(localStorage.getItem("jhc2_sess"))}catch(e){SESSION=null} }
 function isAdmin(){ return SESSION&&SESSION.role==="admin"&&SESSION.aid==="__admin"; }
+const ADMIN_OPERATORS=["가세현","지석근","곽봉수","빈윤정","연은주"];
 const MAX_ASSIGNED_VEHICLES=3;
 function accountVehiclePlates(account){
   if(!account) return [];
@@ -319,6 +323,53 @@ function normalizeCredential(value,trim=false){
   const normalized=composeCompatibilityJamo(String(value??"").replace(/[\u200B-\u200D\u2060\uFEFF]/g,""));
   return trim?normalized.trim():normalized;
 }
+function passwordMatches(account,entered){
+  const stored=normalizeCredential(account?.pw,true), value=normalizeCredential(entered,true);
+  return account?.pwCaseInsensitive===true?stored.toLowerCase()===value.toLowerCase():stored===value;
+}
+function validNewPassword(value){
+  return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/.test(value);
+}
+function auditSafe(value){
+  if(value==null||typeof value!=="object") return value;
+  if(Array.isArray(value)) return value.map(auditSafe);
+  const out={};
+  for(const [key,item] of Object.entries(value)) out[key]=/pw|password/i.test(key)?"[보호됨]":auditSafe(item);
+  return out;
+}
+function auditRecord({operation,collection,targetId,label,before,after,reason}){
+  return {
+    operation,collection,targetId:targetId||"",label:label||targetId||collection,
+    operatorName:SESSION?.operatorName||"미확인",adminId:SETTINGS.adminId||"",reason:reason||"신규 등록",
+    before:auditSafe(before||null),after:auditSafe(after||null),createdAt:new Date().toISOString()
+  };
+}
+async function auditedMutation({operation,collection,id,before,after,reason,label}){
+  if(!isAdmin()) throw new Error("관리자만 변경할 수 있습니다");
+  const why=String(reason||"").trim();
+  if((operation==="update"||operation==="delete")&&!why) throw new Error("변경 사유를 입력하세요");
+  const recordedAfter=operation==="update"?{...(before||{}),...(after||{})}:after;
+  let targetId=id||"";
+  if(useFB){
+    const targetRef=id?fdb.collection(collection).doc(id):fdb.collection(collection).doc();
+    targetId=targetRef.id;
+    const logRef=fdb.collection("auditLogs").doc();
+    const batch=fdb.batch();
+    if(operation==="create") batch.set(targetRef,after);
+    else if(operation==="update") batch.set(targetRef,after,{merge:true});
+    else if(operation==="delete") batch.delete(targetRef);
+    else throw new Error("지원하지 않는 변경 작업입니다");
+    batch.set(logRef,{...auditRecord({operation,collection,targetId,label,before,after:recordedAfter,reason:why}),serverAt:firebase.firestore.FieldValue.serverTimestamp()});
+    await batch.commit();
+    return targetId;
+  }
+  if(collection==="settings"&&id==="main") await saveSettings(after);
+  else if(operation==="create") targetId=await dbAdd(collection,{...after});
+  else if(operation==="update") await dbUpd(collection,id,after);
+  else if(operation==="delete") await dbDel(collection,id);
+  await dbAdd("auditLogs",auditRecord({operation,collection,targetId,label,before,after:recordedAfter,reason:why}));
+  return targetId;
+}
 let loginComposing=false,loginAfterComposition=false,loginSettleTimer=null;
 function startLoginComposition(){ loginComposing=true; }
 function queueSettledLogin(){
@@ -346,6 +397,13 @@ function loginOnEnter(event){
   if((event.isComposing||event.keyCode===229||loginComposing)&&event.target?.blur) event.target.blur();
   queueSettledLogin();
 }
+function toggleAdminOperatorField(){
+  const wrap=$("#adminOperatorWrap"), id=$("#liId"); if(!wrap||!id) return;
+  const adminId=normalizeCredential(SETTINGS.adminId||"jhintex",true);
+  const show=normalizeCredential(id.value,true)===adminId;
+  wrap.style.display=show?"block":"none";
+  if(!show&&$("#liOperator")) $("#liOperator").value="";
+}
 function renderLogin(msg){
   loginComposing=false; loginAfterComposition=false; clearTimeout(loginSettleTimer); loginSettleTimer=null;
   document.body.classList.remove("inapp");
@@ -356,12 +414,14 @@ function renderLogin(msg){
     <img src="logo-h.png" alt="${COMPANY}">
     <div class="login-kicker">CORPORATE FLEET OPERATIONS</div>
     ${msg?`<div class="banner warn">${esc(msg)}</div>`:""}
-    <label>ID</label><input id="liId" value="${esc(localStorage.getItem("jhc2_saveid")||"")}" autocomplete="username" autocapitalize="off" spellcheck="false" oncompositionstart="startLoginComposition()" oncompositionend="finishLoginComposition()" onkeydown="loginOnEnter(event)">
+    <label>ID</label><input id="liId" value="${esc(localStorage.getItem("jhc2_saveid")||"")}" autocomplete="username" autocapitalize="off" spellcheck="false" oninput="toggleAdminOperatorField()" oncompositionstart="startLoginComposition()" oncompositionend="finishLoginComposition()" onkeydown="loginOnEnter(event)">
     <label>PW</label><input id="liPw" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" oncompositionstart="startLoginComposition()" oncompositionend="finishLoginComposition()" onkeydown="loginOnEnter(event)">
+    <div id="adminOperatorWrap" style="display:none"><label>관리자 접속자명 <span class="required">필수</span></label><select id="liOperator"><option value="">접속 담당자 선택</option>${ADMIN_OPERATORS.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("")}</select><p class="field-help">관리자 계정으로 접속할 때만 선택하며 모든 변경 이력에 기록됩니다.</p></div>
     <div class="chk"><input type="checkbox" id="liSave" ${localStorage.getItem("jhc2_saveid")?"checked":""}><label for="liSave" style="margin:0">아이디 저장</label></div>
     <button class="btn" style="background:var(--navy)" onclick="requestLogin()">LOGIN</button>
     <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>본인 계정으로만 사용하시기 바랍니다. (초기 PW = 본인 이름)</div>
   </div>`;
+  toggleAdminOperatorField();
 }
 async function doLogin(){
   const id=normalizeCredential($("#liId").value,true), pw=normalizeCredential($("#liPw").value,true);
@@ -369,10 +429,12 @@ async function doLogin(){
   await ensureSeed(); await loadCore();
   if($("#liSave").checked) localStorage.setItem("jhc2_saveid",id); else localStorage.removeItem("jhc2_saveid");
   if(id===normalizeCredential(SETTINGS.adminId,true)&&pw===normalizeCredential(SETTINGS.adminPw,true)){
-    SESSION={aid:"__admin",name:"총무부 관리자",dept:"인사총무팀",role:"admin",vehicle:"",vehicles:[]};
+    const operatorName=$("#liOperator")?.value||"";
+    if(!ADMIN_OPERATORS.includes(operatorName)) return toast("관리자 접속자명을 선택하세요");
+    SESSION={aid:"__admin",name:"총무부 관리자",operatorName,dept:"인사총무팀",role:"admin",vehicle:"",vehicles:[],loginAt:new Date().toISOString()};
     saveSession(); return enterApp(true);
   }
-  const acc=ACCOUNTS.find(a=>normalizeCredential(a.userId,true)===id&&normalizeCredential(a.pw,true)===pw);
+  const acc=ACCOUNTS.find(a=>normalizeCredential(a.userId,true)===id&&passwordMatches(a,pw));
   if(!acc) return toast("ID 또는 비밀번호가 올바르지 않습니다");
   SESSION=userSession(acc);
   saveSession(); enterApp(true);
@@ -395,7 +457,7 @@ function updateShellMeta(v){
 async function enterApp(showNotice){
   document.body.classList.add("inapp");
   $("#login").style.display="none";
-  $("#uName").textContent=SESSION.name+(isAdmin()?" · 관리자":"");
+  $("#uName").textContent=isAdmin()?`${SESSION.operatorName||"미확인"} · 관리자`:SESSION.name;
   $("#uDept").textContent=SESSION.dept||"재현하늘창";
   $("#mode").textContent=useFB?"서버 공유":"기기 저장";
   $("#mode").className="badge"+(useFB?" on":"");
@@ -768,7 +830,7 @@ function maintDetail(r){
 function maintForm(item,cur){
   if(!canAccessVehicle(mPlate)) return denyVehicleAccess();
   const tire=item==="타이어";
-  modal(`<h3>🔧 ${esc(item)} 교체 기록</h3><p class="sub">${esc(mPlate)} · 입력 후에는 수정할 수 없으니 정확히 입력하세요.</p>
+  modal(`<h3>🔧 ${esc(item)} 교체 기록</h3><p class="sub">${esc(mPlate)} · 실제 정비 내용을 정확히 입력하세요.</p>
   <label>교체 일자</label><input type="date" id="mDate" value="${todayStr()}">
   <label>교체 시 총 키로수 (km)</label><input type="number" id="mKm" inputmode="numeric" value="${cur||""}">
   ${tire?`<div class="row"><div><label>앞 타이어 교체 (개)</label><select id="mTf"><option>0</option><option>1</option><option selected>2</option></select></div>
@@ -776,6 +838,7 @@ function maintForm(item,cur){
   <label>정비소 이름</label><input id="mShop" placeholder="예: OO모터스">
   <label>비용 (원)</label><input type="number" id="mCost" inputmode="numeric" placeholder="예: 480000">
   <label>메모 (선택)</label><input id="mMemo" placeholder="기타 특이사항">
+  ${isAdmin()?`<label>등록 사유 <span class="required">필수</span></label><textarea id="mReason" rows="2" placeholder="예: 정비 영수증 확인 후 등록"></textarea>`:""}
   <button class="btn" onclick="saveMaint('${esc(item)}',${tire})">저장</button>
   <button class="btn sec" onclick="closeModal()">취소</button>`);
 }
@@ -783,11 +846,14 @@ async function saveMaint(item,tire){
   if(!canAccessVehicle(mPlate)) return denyVehicleAccess();
   const d=$("#mDate").value,k=$("#mKm").value;
   if(!d||!k) return toast("일자와 키로수를 입력하세요");
-  const rec={vehicle:mPlate,item,date:d,km:+k,shop:$("#mShop").value.trim(),cost:+($("#mCost").value||0),memo:$("#mMemo").value.trim(),uid:SESSION.aid,by:SESSION.name};
+  const rec={vehicle:mPlate,item,date:d,km:+k,shop:$("#mShop").value.trim(),cost:+($("#mCost").value||0),memo:$("#mMemo").value.trim(),uid:SESSION.aid,by:isAdmin()?(SESSION.operatorName||SESSION.name):SESSION.name};
   if(tire){ rec.tireF=+$("#mTf").value; rec.tireR=+$("#mTr").value;
     if(!rec.tireF&&!rec.tireR) return toast("교체한 타이어 개수를 선택하세요"); }
   if(item==="타이어"&&!rec.shop) return toast("정비소 이름을 입력하세요");
-  await dbAdd("maintenance",rec);
+  if(isAdmin()){
+    const reason=$("#mReason")?.value.trim(); if(!reason) return toast("등록 사유를 입력하세요");
+    await auditedMutation({operation:"create",collection:"maintenance",before:null,after:rec,reason,label:`${rec.vehicle} ${rec.date} ${rec.item}`});
+  }else await dbAdd("maintenance",rec);
   closeModal(); toast("교체 기록 저장됨"); nav("maint");
 }
 
@@ -834,16 +900,19 @@ async function vMy(){
     <p class="sub">차량 지정 변경·부서 이동은 총무부에 문의하세요.</p></div>
   <div class="card"><h2>비밀번호 변경</h2>
     <label>현재 비밀번호</label><input type="password" id="cpw">
-    <label>새 비밀번호</label><input type="password" id="npw">
+    <label>새 비밀번호</label><input type="password" id="npw" autocomplete="new-password" inputmode="text">
+    <p class="field-warning">영문과 숫자를 각각 1개 이상 포함해 6자리 이상 입력하세요. 특수문자는 사용할 수 없으며 영문 대·소문자는 동일하게 인식됩니다.</p>
     <button class="btn sm" onclick="chMyPw()">변경</button></div>
   <button class="btn red" onclick="logout()">로그아웃</button>`;
 }
 async function chMyPw(){
   const acc=ACCOUNTS.find(a=>a.id===SESSION.aid);
   if(!acc) return toast("계정 오류");
-  if($("#cpw").value!==acc.pw) return toast("현재 비밀번호가 틀립니다");
-  const p=$("#npw").value; if(p.length<4) return toast("새 비밀번호는 4자 이상");
-  await dbUpd("accounts",acc.id,{pw:p}); toast("비밀번호 변경됨");
+  if(!passwordMatches(acc,$("#cpw").value)) return toast("현재 비밀번호가 틀립니다");
+  const p=$("#npw").value.trim();
+  if(!validNewPassword(p)) return toast("새 비밀번호는 영문+숫자 6자리 이상이어야 하며 특수문자는 사용할 수 없습니다");
+  await dbUpd("accounts",acc.id,{pw:p.toLowerCase(),pwCaseInsensitive:true});
+  toast("비밀번호가 변경되었습니다. 영문 대·소문자는 동일하게 인식됩니다");
 }
 
 /* ═══════════ 관리자 ═══════════ */
@@ -851,9 +920,9 @@ let aTab="trips";
 async function vAdmin(){
   if(!isAdmin()){ $("#app").innerHTML=`<div class="banner warn">총무부 관리자만 접근할 수 있습니다.</div>`; return; }
   const activeTrips=(await dbAll("trips")).filter(t=>t.status==="운행중").length;
-  const tabs=[["trips","운행 기록"],["book","운행기록부"],["veh","차량 관리"],["acc","직원·계정"],["maint","정비 이력"],["notice","공지"],["set","앱 설정"]];
+  const tabs=[["trips","운행 기록"],["book","운행기록부"],["veh","차량 관리"],["acc","직원·계정"],["maint","정비 이력"],["notice","공지"],["set","앱 설정"],["audit","변경 이력"]];
   $("#app").innerHTML=`<div class="metrics-grid"><div class="metric-card"><div class="metric-label">활성 차량</div><div class="metric-value">${VEHICLES.length}<small>대</small></div><div class="metric-note">차량 관리 데이터</div></div><div class="metric-card"><div class="metric-label">직원 계정</div><div class="metric-value">${ACCOUNTS.length}<small>명</small></div><div class="metric-note">로그인 계정 기준</div></div><div class="metric-card active"><div class="metric-label">운행 중</div><div class="metric-value">${activeTrips}<small>건</small></div><div class="metric-note">미종료 기록</div></div><div class="metric-card"><div class="metric-label">저장 모드</div><div class="metric-value" style="font-size:21px">${useFB?"서버 공유":"기기 저장"}</div><div class="metric-note">현재 연결 상태</div></div></div><section class="panel"><div class="panel-head"><div><h2>관리 영역</h2><p class="sub">직원, 차량, 기록과 앱 설정을 구역별로 관리합니다.</p></div></div><div class="tabs">${tabs.map(t=>`<div class="tab ${aTab===t[0]?"act":""}" onclick="aTab='${t[0]}';nav('admin')">${t[1]}</div>`).join("")}</div></section><div id="aBody"></div>`;
-  await ({trips:aTrips,book:aBook,veh:aVeh,acc:aAcc,maint:aMaint,notice:aNotice,set:aSet})[aTab]();
+  await ({trips:aTrips,book:aBook,veh:aVeh,acc:aAcc,maint:aMaint,notice:aNotice,set:aSet,audit:aAudit})[aTab]();
 }
 async function aTrips(){
   const trips=(await dbAll("trips")).sort((a,b)=>(b.date+(b.startTime||"")).localeCompare(a.date+(a.startTime||"")));
@@ -875,10 +944,45 @@ async function aTrips(){
     <button class="btn sm grn" onclick="dlExcel()">📥 전체기록 엑셀</button></div>
   </div>
   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>일자</th><th>차량</th><th>부서</th><th>사용자</th><th>시작</th><th>종료</th><th>거리</th><th>목적</th><th></th></tr></thead><tbody>
-  ${list.slice(0,100).map(t=>`<tr class="${t.offday?"off":""}"><td>${esc(t.date)}${t.offday?"<br><span class='tag off'>휴무일</span>":""}</td><td>${esc(t.vehicle)}</td><td>${esc(t.dept)}</td><td>${esc(t.user)}</td><td>${fmt(t.startKm)}</td><td>${t.status==="운행중"?"운행중":fmt(t.endKm)}</td><td><b>${fmt(t.dist)}</b></td><td>${esc(t.purpose||"")}</td><td><button class="btn sm red" onclick="if(confirm('이 기록을 삭제할까요? (관리자 권한)'))delTrip('${t.id}')">삭제</button></td></tr>`).join("")}
+  ${list.slice(0,100).map(t=>`<tr class="${t.offday?"off":""}"><td>${esc(t.date)}${t.offday?"<br><span class='tag off'>휴무일</span>":""}</td><td>${esc(t.vehicle)}</td><td>${esc(t.dept)}</td><td>${esc(t.user)}</td><td>${fmt(t.startKm)}</td><td>${t.status==="운행중"?"운행중":fmt(t.endKm)}</td><td><b>${fmt(t.dist)}</b></td><td>${esc(t.purpose||"")}</td><td><button class="btn sm sec" onclick="tripEditForm('${t.id}')">수정</button><button class="btn sm red" onclick="tripDeleteForm('${t.id}')">삭제</button></td></tr>`).join("")}
   </tbody></table></div><p class="sub" style="margin-top:6px">최근 100건 표시 · 전체는 엑셀 다운로드 이용 · 기록 수정·삭제는 관리자만 가능</p></div>`;
 }
-async function delTrip(id){ await dbDel("trips",id); toast("삭제됨"); nav("admin"); }
+async function tripEditForm(id){
+  const t=(await dbAll("trips")).find(x=>x.id===id); if(!t) return toast("운행 기록을 찾을 수 없습니다");
+  const vehicleOptions=VEHICLES.map(v=>`<option value="${esc(v.plate)}" ${v.plate===t.vehicle?"selected":""}>${esc(v.plate)} · ${esc(v.model)}</option>`).join("");
+  modal(`<h3>운행 기록 수정</h3><p class="sub">저장 즉시 변경 전·후 값과 접속자명이 감사 로그에 기록됩니다.</p>
+    <div class="form-grid"><div><label>날짜</label><input type="date" id="etDate" value="${esc(t.date)}"></div><div><label>차량</label><select id="etVehicle">${vehicleOptions}</select></div>
+    <div><label>부서</label><input id="etDept" value="${esc(t.dept||"")}" list="deptListTrip"></div><div><label>사용자</label><input id="etUser" value="${esc(t.user||"")}" list="userListTrip"></div>
+    <datalist id="deptListTrip">${[...new Set(ACCOUNTS.map(a=>a.dept))].map(d=>`<option value="${esc(d)}">`).join("")}</datalist><datalist id="userListTrip">${ACCOUNTS.map(a=>`<option value="${esc(a.name)}">`).join("")}</datalist>
+    <div><label>시작 시각</label><input type="time" id="etStartTime" value="${esc(t.startTime||"")}"></div><div><label>종료 시각</label><input type="time" id="etEndTime" value="${esc(t.endTime||"")}"></div>
+    <div><label>시작 km</label><input type="number" id="etStartKm" min="0" value="${esc(t.startKm??"")}"></div><div><label>종료 km</label><input type="number" id="etEndKm" min="0" value="${esc(t.endKm??"")}"></div>
+    <div class="span-2"><label>목적·비고</label><textarea id="etPurpose" rows="3">${esc(t.purpose||"")}</textarea></div><div class="span-2"><label>상태</label><select id="etStatus"><option ${t.status==="운행중"?"selected":""}>운행중</option><option ${t.status==="완료"?"selected":""}>완료</option></select></div>
+    <div class="span-2"><label>변경 사유 <span class="required">필수</span></label><textarea id="etReason" rows="2" placeholder="예: 계기판 입력 오류 정정"></textarea></div></div>
+    <button class="btn" onclick="saveTripEdit('${id}')">수정 저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function saveTripEdit(id){
+  const before=(await dbAll("trips")).find(x=>x.id===id); if(!before) return toast("운행 기록을 찾을 수 없습니다");
+  const date=$("#etDate").value,vehicle=$("#etVehicle").value,dept=$("#etDept").value.trim(),user=$("#etUser").value.trim(),status=$("#etStatus").value;
+  const startKm=Number($("#etStartKm").value), endRaw=$("#etEndKm").value, endKm=endRaw===""?null:Number(endRaw), reason=$("#etReason").value.trim();
+  if(!date||!vehicle||!dept||!user||!$("#etStartTime").value) return toast("날짜, 차량, 부서, 사용자, 시작 시각은 필수입니다");
+  if(!Number.isFinite(startKm)||startKm<0) return toast("시작 km를 확인하세요");
+  if(status==="완료"&&(!Number.isFinite(endKm)||endKm<startKm)) return toast("완료 기록의 종료 km는 시작 km 이상이어야 합니다");
+  if(!reason) return toast("변경 사유를 입력하세요");
+  const v=VEHICLES.find(x=>x.plate===vehicle);
+  const patch={date,vehicle,model:v?.model||before.model||"",dept,user,startTime:$("#etStartTime").value,endTime:status==="완료"?$("#etEndTime").value:"",startKm,endKm:status==="완료"?endKm:null,dist:status==="완료"?endKm-startKm:null,purpose:$("#etPurpose").value.trim(),status,offday:isOffday(date)};
+  await auditedMutation({operation:"update",collection:"trips",id,before,after:patch,reason,label:`${before.vehicle} ${before.date} ${before.user}`});
+  closeModal(); toast("운행 기록이 수정되었습니다"); nav("admin");
+}
+async function tripDeleteForm(id){
+  const t=(await dbAll("trips")).find(x=>x.id===id); if(!t) return toast("운행 기록을 찾을 수 없습니다");
+  modal(`<h3>운행 기록 삭제</h3><div class="banner warn">${esc(t.date)} · ${esc(t.vehicle)} · ${esc(t.user)} 기록을 삭제합니다. 삭제 전 내용은 감사 로그에 남습니다.</div><label>삭제 사유 <span class="required">필수</span></label><textarea id="dtReason" rows="3"></textarea><button class="btn red" onclick="delTrip('${id}')">삭제 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function delTrip(id){
+  const before=(await dbAll("trips")).find(x=>x.id===id),reason=$("#dtReason")?.value.trim();
+  if(!before) return toast("운행 기록을 찾을 수 없습니다"); if(!reason) return toast("삭제 사유를 입력하세요");
+  await auditedMutation({operation:"delete",collection:"trips",id,before,after:null,reason,label:`${before.vehicle} ${before.date} ${before.user}`});
+  closeModal(); toast("운행 기록이 삭제되었습니다"); nav("admin");
+}
 async function dlExcel(){
   const trips=(await dbAll("trips")).sort((a,b)=>(a.date+(a.startTime||"")).localeCompare(b.date+(b.startTime||"")));
   const f=window._af||{v:"",u:"",from:"",to:""};
@@ -979,7 +1083,7 @@ async function aVeh(){
   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>차량번호</th><th>차종</th><th>유형</th><th>부서</th><th>지정 사용자</th><th></th><th></th></tr></thead><tbody>
   ${VEHICLES.map(v=>{const owners=vehicleOwnerNames(v.plate);return `<tr><td><b>${esc(v.plate)}</b></td><td>${esc(v.model)}</td><td><span class="tag ${v.type==="공용"?"pub":"prv"}">${esc(v.type)}</span></td><td>${esc(v.dept)}</td><td>${owners?esc(owners):"-"}</td>
   <td><button class="btn sm sec" onclick="vehForm('${v.id}')">수정</button></td>
-  <td><button class="btn sm red" onclick="if(confirm('${esc(v.plate)} 차량을 삭제(반납)할까요?\\n기존 기록은 유지됩니다.'))delVeh('${v.id}')">삭제</button></td></tr>`}).join("")}
+  <td><button class="btn sm red" onclick="vehicleDeleteForm('${v.id}')">삭제</button></td></tr>`}).join("")}
   </tbody></table></div><p class="sub" style="margin-top:6px">개인별 차량 지정은 [계정] 탭에서 설정합니다.</p></div>`;
 }
 function vehForm(id){
@@ -991,23 +1095,34 @@ function vehForm(id){
   <label>유형</label><select id="vT"><option ${v.type==="전용"?"selected":""}>전용</option><option ${v.type==="공용"?"selected":""}>공용</option></select>
   <label>부서(소속)</label><input id="vD" value="${esc(v.dept)}" list="deptListV">
   <datalist id="deptListV">${[...new Set(VEHICLES.map(x=>x.dept).concat(Object.keys(SEED_ORG)))].map(d=>`<option value="${esc(d)}">`).join("")}</datalist>
+  ${id?`<label>변경 사유 <span class="required">필수</span></label><textarea id="vReason" rows="2"></textarea>`:""}
   <button class="btn" onclick="saveVeh('${id||""}')">저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
 }
 async function saveVeh(id){
   const o={plate:$("#vP").value.trim(),model:$("#vM").value.trim(),cat:$("#vC").value,type:$("#vT").value,dept:$("#vD").value.trim(),active:true};
   if(!o.plate||!o.model||!o.dept) return toast("차량번호/차종/부서는 필수입니다");
-  if(id) await dbUpd("vehicles",id,o); else await dbAdd("vehicles",o);
+  const before=id?VEHICLES.find(v=>v.id===id):null,reason=id?$("#vReason").value.trim():"신규 차량 등록";
+  if(id&&!reason) return toast("변경 사유를 입력하세요");
+  await auditedMutation({operation:id?"update":"create",collection:"vehicles",id:id||undefined,before,after:o,reason,label:o.plate});
   closeModal(); toast("저장됨"); nav("admin");
 }
-async function delVeh(id){ await dbUpd("vehicles",id,{active:false}); toast("차량 삭제(비활성) 처리됨"); nav("admin"); }
+function vehicleDeleteForm(id){
+  const v=VEHICLES.find(x=>x.id===id); if(!v) return toast("차량을 찾을 수 없습니다");
+  modal(`<h3>차량 삭제(비활성)</h3><div class="banner warn">${esc(v.plate)} 차량을 비활성 처리합니다. 기존 운행·정비 기록은 유지됩니다.</div><label>삭제 사유 <span class="required">필수</span></label><textarea id="dvReason" rows="3"></textarea><button class="btn red" onclick="delVeh('${id}')">삭제 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function delVeh(id){
+  const before=VEHICLES.find(v=>v.id===id),reason=$("#dvReason")?.value.trim(); if(!before) return toast("차량을 찾을 수 없습니다"); if(!reason) return toast("삭제 사유를 입력하세요");
+  await auditedMutation({operation:"update",collection:"vehicles",id,before,after:{active:false},reason,label:before.plate});
+  closeModal(); toast("차량 삭제(비활성) 처리됨"); nav("admin");
+}
 async function aAcc(){
   $("#aBody").innerHTML=`<div class="card"><button class="btn sm grn" onclick="accForm()">＋ 계정 추가</button>
   <p class="sub" style="margin-top:6px">초기 계정: ID=PW=이름 (조직도 기준, 회장님·사장님 제외) · 지정 차량은 계정별 최대 ${MAX_ASSIGNED_VEHICLES}대 · 관리부서에서 변경</p></div>
   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>이름</th><th>ID</th><th>부서</th><th>지정차량</th><th></th><th></th><th></th></tr></thead><tbody>
   ${ACCOUNTS.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.userId)}</td><td>${esc(a.dept)}</td><td>${accountVehiclePlates(a).length?accountVehiclePlates(a).map(esc).join("<br>"):"-"}</td>
   <td><button class="btn sm sec" onclick="accForm('${a.id}')">수정</button></td>
-  <td><button class="btn sm sec" onclick="if(confirm('${esc(a.name)} PW를 이름(초기값)으로 초기화할까요?'))resetPw('${a.id}','${esc(a.name)}')">PW초기화</button></td>
-  <td><button class="btn sm red" onclick="if(confirm('${esc(a.name)} 계정을 삭제할까요?'))delAcc('${a.id}')">삭제</button></td></tr>`).join("")}
+  <td><button class="btn sm sec" onclick="resetPwForm('${a.id}')">PW초기화</button></td>
+  <td><button class="btn sm red" onclick="accountDeleteForm('${a.id}')">삭제</button></td></tr>`).join("")}
   </tbody></table></div></div>`;
 }
 function accForm(id){
@@ -1025,6 +1140,7 @@ function accForm(id){
   <div class="assignment-count"><label style="margin:0">지정 차량</label><strong id="aVCount">${current.size}/${MAX_ASSIGNED_VEHICLES}대 선택</strong></div>
   <div class="assignment-list">${opts.map(v=>`<label class="assignment-item"><input type="checkbox" name="aVehicle" value="${esc(v.plate)}" ${current.has(v.plate)?"checked":""} onchange="limitVehicleChecks(this)"><span><strong>${esc(v.plate)} · ${esc(v.model)}</strong><small>${esc(v.type)} · ${esc(v.dept)}${v.type==="공용"?" · 중복 지정 가능":""}</small></span></label>`).join("")}</div>
   <p class="field-help">최대 ${MAX_ASSIGNED_VEHICLES}대까지 선택할 수 있습니다. 전용차량은 한 계정에만 지정됩니다.</p>
+  ${id?`<label>변경 사유 <span class="required">필수</span></label><textarea id="aReason" rows="2"></textarea>`:""}
   <button class="btn" onclick="saveAcc('${id||""}')">저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
 }
 function limitVehicleChecks(el){
@@ -1040,19 +1156,72 @@ async function saveAcc(id){
   if(vehicles.length>MAX_ASSIGNED_VEHICLES) return toast(`지정 차량은 최대 ${MAX_ASSIGNED_VEHICLES}대입니다`);
   const o={name,userId:($("#aI").value.trim()||name),dept:$("#aD").value.trim(),vehicle:vehicles[0]||"",vehicles};
   if(!o.dept) return toast("부서를 입력하세요");
-  if(!id){ o.pw=($("#aP").value||name); const dup=ACCOUNTS.find(a=>a.userId===o.userId); if(dup) return toast("이미 존재하는 ID입니다"); await dbAdd("accounts",o); }
-  else await dbUpd("accounts",id,o);
+  const dup=ACCOUNTS.find(a=>a.userId===o.userId&&a.id!==id); if(dup) return toast("이미 존재하는 ID입니다");
+  const before=id?ACCOUNTS.find(a=>a.id===id):null,reason=id?$("#aReason").value.trim():"신규 계정 등록";
+  if(id&&!reason) return toast("변경 사유를 입력하세요");
+  if(!id) o.pw=($("#aP").value||name);
+  await auditedMutation({operation:id?"update":"create",collection:"accounts",id:id||undefined,before,after:o,reason,label:name});
   closeModal(); toast("저장됨"); nav("admin");
 }
-async function resetPw(id,name){ await dbUpd("accounts",id,{pw:name}); toast("PW가 이름으로 초기화됨"); }
-async function delAcc(id){ await dbDel("accounts",id); toast("계정 삭제됨"); nav("admin"); }
+function resetPwForm(id){
+  const a=ACCOUNTS.find(x=>x.id===id); if(!a) return toast("계정을 찾을 수 없습니다");
+  modal(`<h3>비밀번호 초기화</h3><div class="banner warn">${esc(a.name)} 계정의 비밀번호를 기존 초기값인 이름으로 되돌립니다.</div><label>초기화 사유 <span class="required">필수</span></label><textarea id="rpReason" rows="3"></textarea><button class="btn" onclick="resetPw('${id}')">초기화 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function resetPw(id){
+  const before=ACCOUNTS.find(a=>a.id===id),reason=$("#rpReason")?.value.trim(); if(!before) return toast("계정을 찾을 수 없습니다"); if(!reason) return toast("초기화 사유를 입력하세요");
+  await auditedMutation({operation:"update",collection:"accounts",id,before,after:{pw:before.name,pwCaseInsensitive:false},reason,label:before.name});
+  closeModal(); toast("PW가 이름으로 초기화됨"); nav("admin");
+}
+function accountDeleteForm(id){
+  const a=ACCOUNTS.find(x=>x.id===id); if(!a) return toast("계정을 찾을 수 없습니다");
+  modal(`<h3>계정 삭제</h3><div class="banner warn">${esc(a.name)} 계정을 삭제합니다. 기존 운행·정비 기록은 유지됩니다.</div><label>삭제 사유 <span class="required">필수</span></label><textarea id="daReason" rows="3"></textarea><button class="btn red" onclick="delAcc('${id}')">삭제 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function delAcc(id){
+  const before=ACCOUNTS.find(a=>a.id===id),reason=$("#daReason")?.value.trim(); if(!before) return toast("계정을 찾을 수 없습니다"); if(!reason) return toast("삭제 사유를 입력하세요");
+  await auditedMutation({operation:"delete",collection:"accounts",id,before,after:null,reason,label:before.name});
+  closeModal(); toast("계정 삭제됨"); nav("admin");
+}
 async function aMaint(){
   const recs=(await dbAll("maintenance")).sort((a,b)=>b.date.localeCompare(a.date));
   $("#aBody").innerHTML=`<div class="card"><h2>전체 소모품 교체 이력</h2><div class="tbl-wrap"><table><thead><tr><th>일자</th><th>차량</th><th>항목</th><th>km</th><th>정비소</th><th>비용</th><th>내역</th><th>입력자</th><th></th></tr></thead><tbody>
-  ${recs.slice(0,100).map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.vehicle)}</td><td>${esc(r.item)}</td><td>${fmt(r.km)}</td><td>${esc(r.shop||"")}</td><td>${r.cost?fmt(r.cost):""}</td><td>${esc(maintDetail(r))}</td><td>${esc(r.by||"")}</td><td><button class="btn sm red" onclick="if(confirm('삭제할까요?'))delMaintRec('${r.id}')">삭제</button></td></tr>`).join("")||"<tr><td colspan=9>기록 없음</td></tr>"}
+  ${recs.slice(0,100).map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.vehicle)}</td><td>${esc(r.item)}</td><td>${fmt(r.km)}</td><td>${esc(r.shop||"")}</td><td>${r.cost?fmt(r.cost):""}</td><td>${esc(maintDetail(r))}</td><td>${esc(r.by||"")}</td><td><button class="btn sm sec" onclick="maintEditForm('${r.id}')">수정</button><button class="btn sm red" onclick="maintDeleteForm('${r.id}')">삭제</button></td></tr>`).join("")||"<tr><td colspan=9>기록 없음</td></tr>"}
   </tbody></table></div></div>`;
 }
-async function delMaintRec(id){ await dbDel("maintenance",id); toast("삭제됨"); nav("admin"); }
+async function maintEditForm(id){
+  const r=(await dbAll("maintenance")).find(x=>x.id===id); if(!r) return toast("정비 기록을 찾을 수 없습니다");
+  modal(`<h3>정비 기록 수정</h3><p class="sub">변경 전·후 값과 접속자명이 감사 로그에 기록됩니다.</p><div class="form-grid">
+    <div><label>차량</label><select id="emVehicle">${VEHICLES.map(v=>`<option value="${esc(v.plate)}" ${v.plate===r.vehicle?"selected":""}>${esc(v.plate)} · ${esc(v.model)}</option>`).join("")}</select></div>
+    <div><label>정비 항목</label><select id="emItem">${MAINT_ITEMS.map(it=>`<option value="${esc(it.name)}" ${it.name===r.item?"selected":""}>${esc(it.name)}</option>`).join("")}</select></div>
+    <div><label>정비일</label><input type="date" id="emDate" value="${esc(r.date)}"></div><div><label>교체 시 km</label><input type="number" min="0" id="emKm" value="${esc(r.km??"")}"></div>
+    <div><label>정비소</label><input id="emShop" value="${esc(r.shop||"")}"></div><div><label>비용</label><input type="number" min="0" id="emCost" value="${esc(r.cost??0)}"></div>
+    <div><label>앞 타이어 수량</label><select id="emTf">${[0,1,2,3,4].map(n=>`<option ${+r.tireF===n?"selected":""}>${n}</option>`).join("")}</select></div><div><label>뒤 타이어 수량</label><select id="emTr">${[0,1,2,3,4].map(n=>`<option ${+r.tireR===n?"selected":""}>${n}</option>`).join("")}</select></div>
+    <div class="span-2"><label>메모</label><textarea id="emMemo" rows="3">${esc(r.memo||"")}</textarea></div><div class="span-2"><label>변경 사유 <span class="required">필수</span></label><textarea id="emReason" rows="2"></textarea></div></div>
+    <button class="btn" onclick="saveMaintEdit('${id}')">수정 저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function saveMaintEdit(id){
+  const before=(await dbAll("maintenance")).find(x=>x.id===id); if(!before) return toast("정비 기록을 찾을 수 없습니다");
+  const item=$("#emItem").value,date=$("#emDate").value,km=Number($("#emKm").value),shop=$("#emShop").value.trim(),reason=$("#emReason").value.trim();
+  const tireF=Number($("#emTf").value),tireR=Number($("#emTr").value);
+  if(!date||!Number.isFinite(km)||km<0) return toast("정비일과 km를 확인하세요");
+  if(item==="타이어"&&!shop) return toast("타이어 기록은 정비소를 입력하세요");
+  if(item==="타이어"&&!tireF&&!tireR) return toast("교체한 타이어 수량을 입력하세요");
+  if(!reason) return toast("변경 사유를 입력하세요");
+  const patch={vehicle:$("#emVehicle").value,item,date,km,shop,cost:Number($("#emCost").value||0),memo:$("#emMemo").value.trim()};
+  if(item==="타이어"){ patch.tireF=tireF; patch.tireR=tireR; }
+  else if(before.item==="타이어"){ patch.tireF=0; patch.tireR=0; }
+  await auditedMutation({operation:"update",collection:"maintenance",id,before,after:patch,reason,label:`${before.vehicle} ${before.date} ${before.item}`});
+  closeModal(); toast("정비 기록이 수정되었습니다"); nav("admin");
+}
+async function maintDeleteForm(id){
+  const r=(await dbAll("maintenance")).find(x=>x.id===id); if(!r) return toast("정비 기록을 찾을 수 없습니다");
+  modal(`<h3>정비 기록 삭제</h3><div class="banner warn">${esc(r.date)} · ${esc(r.vehicle)} · ${esc(r.item)} 기록을 삭제합니다. 삭제 전 내용은 감사 로그에 남습니다.</div><label>삭제 사유 <span class="required">필수</span></label><textarea id="dmReason" rows="3"></textarea><button class="btn red" onclick="delMaintRec('${id}')">삭제 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function delMaintRec(id){
+  const before=(await dbAll("maintenance")).find(x=>x.id===id),reason=$("#dmReason")?.value.trim();
+  if(!before) return toast("정비 기록을 찾을 수 없습니다"); if(!reason) return toast("삭제 사유를 입력하세요");
+  await auditedMutation({operation:"delete",collection:"maintenance",id,before,after:null,reason,label:`${before.vehicle} ${before.date} ${before.item}`});
+  closeModal(); toast("정비 기록이 삭제되었습니다"); nav("admin");
+}
 async function aNotice(){
   const ns=(await dbAll("notices")).sort((a,b)=>b.date.localeCompare(a.date));
   $("#aBody").innerHTML=`
@@ -1061,40 +1230,115 @@ async function aNotice(){
     <label>제목</label><input id="ntT" placeholder="예: 2026년 하계 휴가 대비 차량 반납 안내">
     <label>내용</label><textarea id="ntB" rows="6" placeholder="공지 내용"></textarea>
     <button class="btn sm grn" onclick="addNotice()">등록</button></div>
-  <div class="card"><h2>공지 목록</h2><div class="tbl-wrap"><table><thead><tr><th>일자</th><th>제목</th><th>상태</th><th></th><th></th></tr></thead><tbody>
+  <div class="card"><h2>공지 목록</h2><div class="tbl-wrap"><table><thead><tr><th>일자</th><th>제목</th><th>상태</th><th></th><th></th><th></th></tr></thead><tbody>
   ${ns.map(n=>`<tr><td>${esc(n.date)}</td><td style="text-align:left">${esc(n.title)}</td><td>${n.active!==false?"게시중":"중단"}</td>
-  <td><button class="btn sm sec" onclick="toggleNotice('${n.id}',${n.active!==false})">${n.active!==false?"게시중단":"재게시"}</button></td>
-  <td><button class="btn sm red" onclick="if(confirm('삭제할까요?'))delNotice('${n.id}')">삭제</button></td></tr>`).join("")||"<tr><td colspan=5>공지 없음</td></tr>"}
+  <td><button class="btn sm sec" onclick="noticeEditForm('${n.id}')">수정</button></td><td><button class="btn sm sec" onclick="noticeToggleForm('${n.id}')">${n.active!==false?"게시중단":"재게시"}</button></td>
+  <td><button class="btn sm red" onclick="noticeDeleteForm('${n.id}')">삭제</button></td></tr>`).join("")||"<tr><td colspan=6>공지 없음</td></tr>"}
   </tbody></table></div></div>`;
 }
 async function addNotice(){
   const t=$("#ntT").value.trim(),b=$("#ntB").value.trim();
   if(!t||!b) return toast("제목과 내용을 입력하세요");
-  await dbAdd("notices",{title:t,body:b,date:todayStr(),active:true});
+  const notice={title:t,body:b,date:todayStr(),active:true};
+  await auditedMutation({operation:"create",collection:"notices",before:null,after:notice,reason:"신규 공지 등록",label:t});
   toast("공지 등록됨 — 직원 로그인 시 팝업 표시"); nav("admin");
 }
-async function toggleNotice(id,cur){ await dbUpd("notices",id,{active:!cur}); nav("admin"); }
-async function delNotice(id){ await dbDel("notices",id); toast("삭제됨"); nav("admin"); }
+async function noticeEditForm(id){
+  const n=(await dbAll("notices")).find(x=>x.id===id); if(!n) return toast("공지를 찾을 수 없습니다");
+  modal(`<h3>공지 수정</h3><label>제목</label><input id="enTitle" value="${esc(n.title)}"><label>내용</label><textarea id="enBody" rows="7">${esc(n.body)}</textarea><label>변경 사유 <span class="required">필수</span></label><textarea id="enReason" rows="2"></textarea><button class="btn" onclick="saveNoticeEdit('${id}')">수정 저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function saveNoticeEdit(id){
+  const before=(await dbAll("notices")).find(x=>x.id===id),title=$("#enTitle").value.trim(),body=$("#enBody").value.trim(),reason=$("#enReason").value.trim();
+  if(!before) return toast("공지를 찾을 수 없습니다"); if(!title||!body) return toast("제목과 내용을 입력하세요"); if(!reason) return toast("변경 사유를 입력하세요");
+  await auditedMutation({operation:"update",collection:"notices",id,before,after:{title,body},reason,label:before.title});
+  closeModal(); toast("공지가 수정되었습니다"); nav("admin");
+}
+async function noticeToggleForm(id){
+  const n=(await dbAll("notices")).find(x=>x.id===id); if(!n) return toast("공지를 찾을 수 없습니다");
+  modal(`<h3>${n.active!==false?"공지 게시 중단":"공지 재게시"}</h3><p class="sub">${esc(n.title)}</p><label>변경 사유 <span class="required">필수</span></label><textarea id="tnReason" rows="3"></textarea><button class="btn" onclick="toggleNotice('${id}')">변경 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function toggleNotice(id){
+  const before=(await dbAll("notices")).find(x=>x.id===id),reason=$("#tnReason")?.value.trim(); if(!before) return toast("공지를 찾을 수 없습니다"); if(!reason) return toast("변경 사유를 입력하세요");
+  await auditedMutation({operation:"update",collection:"notices",id,before,after:{active:before.active===false},reason,label:before.title});
+  closeModal(); nav("admin");
+}
+async function noticeDeleteForm(id){
+  const n=(await dbAll("notices")).find(x=>x.id===id); if(!n) return toast("공지를 찾을 수 없습니다");
+  modal(`<h3>공지 삭제</h3><div class="banner warn">${esc(n.title)} 공지를 삭제합니다.</div><label>삭제 사유 <span class="required">필수</span></label><textarea id="dnReason" rows="3"></textarea><button class="btn red" onclick="delNotice('${id}')">삭제 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function delNotice(id){
+  const before=(await dbAll("notices")).find(x=>x.id===id),reason=$("#dnReason")?.value.trim(); if(!before) return toast("공지를 찾을 수 없습니다"); if(!reason) return toast("삭제 사유를 입력하세요");
+  await auditedMutation({operation:"delete",collection:"notices",id,before,after:null,reason,label:before.title});
+  closeModal(); toast("삭제됨"); nav("admin");
+}
 async function aSet(){
   $("#aBody").innerHTML=`
   <div class="card"><h2>관리자 계정 변경</h2>
     <label>관리자 ID</label><input id="nadId" value="${esc(SETTINGS.adminId)}">
     <label>새 비밀번호 (비우면 유지)</label><input type="password" id="nadPw">
+    <label>변경 사유 <span class="required">필수</span></label><textarea id="nadReason" rows="2"></textarea>
     <button class="btn sm" onclick="chAdmin()">변경</button></div>
+  <div class="card"><h2>관리자 접속 담당자</h2><p class="sub">관리자 로그인 시 다음 5명 중 접속자를 반드시 선택합니다. 모든 변경 이력에 이름이 저장됩니다.</p><div class="btn-row">${ADMIN_OPERATORS.map(n=>`<span class="tag pub">${esc(n)}</span>`).join("")}</div></div>
   <div class="card"><h2>추가 휴무일(공휴일) 등록</h2>
     <p class="sub">기본: 토·일요일 + 법정공휴일(2026~2027 내장). 임시휴무·창립기념일 등을 YYYY-MM-DD 형식으로 추가.</p>
     <textarea id="exh" rows="4" placeholder="2026-08-14">${esc(SETTINGS.extraHolidays||"")}</textarea>
+    <label>변경 사유 <span class="required">필수</span></label><textarea id="exhReason" rows="2"></textarea>
     <button class="btn sm" onclick="saveExh()">저장</button></div>
   <div class="card"><h2>저장 모드</h2><p class="sub">${useFB?"✅ Firebase 서버 연결됨 — 모든 기기의 기록이 실시간 공유됩니다.":"⚠️ 기기저장 모드 — 이 기기에만 저장됩니다. firebase-config.js 를 설정하면 전 직원 기록이 공유됩니다 (가이드 참고)."}</p></div>
   <button class="btn red" onclick="logout()">로그아웃</button>`;
 }
 async function chAdmin(){
-  const id=$("#nadId").value.trim(), p=$("#nadPw").value;
+  const id=$("#nadId").value.trim(), p=$("#nadPw").value,reason=$("#nadReason").value.trim();
   if(!id) return toast("ID를 입력하세요");
+  if(!reason) return toast("변경 사유를 입력하세요");
   const patch={adminId:id}; if(p){ if(p.length<4) return toast("PW는 4자 이상"); patch.adminPw=p; }
-  await saveSettings(patch); Object.assign(SETTINGS,patch); toast("관리자 계정 변경됨");
+  const before={adminId:SETTINGS.adminId,adminPw:SETTINGS.adminPw};
+  await auditedMutation({operation:"update",collection:"settings",id:"main",before,after:patch,reason,label:"관리자 계정"});
+  Object.assign(SETTINGS,patch); toast("관리자 계정 변경됨");
 }
-async function saveExh(){ await saveSettings({extraHolidays:$("#exh").value.trim()}); SETTINGS.extraHolidays=$("#exh").value.trim(); toast("저장됨"); }
+async function saveExh(){
+  const extraHolidays=$("#exh").value.trim(),reason=$("#exhReason").value.trim(); if(!reason) return toast("변경 사유를 입력하세요");
+  await auditedMutation({operation:"update",collection:"settings",id:"main",before:{extraHolidays:SETTINGS.extraHolidays||""},after:{extraHolidays},reason,label:"추가 휴무일"});
+  SETTINGS.extraHolidays=extraHolidays; toast("저장됨");
+}
+
+/* ═══════════ 관리자 변경 이력 (append-only) ═══════════ */
+const AUDIT_COLLECTION_LABELS={trips:"운행 기록",maintenance:"정비 기록",vehicles:"차량",accounts:"직원·계정",notices:"공지",settings:"앱 설정"};
+const AUDIT_OPERATION_LABELS={create:"등록",update:"수정",delete:"삭제"};
+const AUDIT_FIELD_LABELS={date:"날짜",vehicle:"차량",model:"차종",dept:"부서",user:"사용자",startTime:"시작 시각",endTime:"종료 시각",startKm:"시작 km",endKm:"종료 km",dist:"운행거리",purpose:"목적·비고",status:"상태",offday:"휴무일",item:"정비 항목",km:"정비 km",shop:"정비소",cost:"비용",tireF:"앞 타이어",tireR:"뒤 타이어",memo:"메모",plate:"차량번호",type:"유형",cat:"구분",active:"활성 상태",name:"이름",userId:"ID",vehicles:"지정 차량",title:"제목",body:"내용",adminId:"관리자 ID",adminPw:"관리자 PW",extraHolidays:"추가 휴무일"};
+function auditDate(log){
+  try{ if(log.serverAt?.toDate) return log.serverAt.toDate(); }catch(e){}
+  const d=new Date(log.createdAt||0); return Number.isNaN(d.getTime())?new Date(0):d;
+}
+function auditDateKey(log){ const d=auditDate(log); return localDateValue(d); }
+function auditWhen(log){
+  const d=auditDate(log); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");
+}
+function auditChangedFields(log){
+  if(log.operation==="create") return "신규 기록 전체";
+  if(log.operation==="delete") return "삭제 전 기록 전체";
+  const before=log.before||{},after=log.after||{};
+  const keys=[...new Set([...Object.keys(before),...Object.keys(after)])].filter(k=>JSON.stringify(before[k])!==JSON.stringify(after[k]));
+  return keys.length?keys.map(k=>AUDIT_FIELD_LABELS[k]||k).join(", "):"변경 필드 확인 필요";
+}
+let auditFilters={operator:"",collection:"",operation:"",from:"",to:""};
+function applyAuditFilters(){
+  auditFilters={operator:$("#auditOperator")?.value||"",collection:$("#auditCollection")?.value||"",operation:$("#auditOperation")?.value||"",from:$("#auditFrom")?.value||"",to:$("#auditTo")?.value||""}; nav("admin");
+}
+function resetAuditFilters(){ auditFilters={operator:"",collection:"",operation:"",from:"",to:""}; nav("admin"); }
+async function aAudit(){
+  const all=(await dbAll("auditLogs")).sort((a,b)=>auditDate(b)-auditDate(a)),f=auditFilters;
+  const operators=[...new Set(all.map(x=>x.operatorName).filter(Boolean))].sort(),collections=[...new Set(all.map(x=>x.collection).filter(Boolean))].sort();
+  const rows=all.filter(x=>(!f.operator||x.operatorName===f.operator)&&(!f.collection||x.collection===f.collection)&&(!f.operation||x.operation===f.operation)&&(!f.from||auditDateKey(x)>=f.from)&&(!f.to||auditDateKey(x)<=f.to));
+  $("#aBody").innerHTML=`<div class="banner info">감사 로그는 추가만 가능하며 앱에는 수정·삭제 기능이 없습니다. Firestore 규칙에서도 <b>update/delete가 거부</b>됩니다.</div>
+  <div class="card"><div class="filter-bar"><div><label>접속자</label><select id="auditOperator"><option value="">전체 접속자</option>${operators.map(n=>`<option value="${esc(n)}" ${f.operator===n?"selected":""}>${esc(n)}</option>`).join("")}</select></div><div><label>관리 영역</label><select id="auditCollection"><option value="">전체 영역</option>${collections.map(c=>`<option value="${esc(c)}" ${f.collection===c?"selected":""}>${esc(AUDIT_COLLECTION_LABELS[c]||c)}</option>`).join("")}</select></div><div><label>작업</label><select id="auditOperation"><option value="">전체 작업</option>${Object.entries(AUDIT_OPERATION_LABELS).map(([k,v])=>`<option value="${k}" ${f.operation===k?"selected":""}>${v}</option>`).join("")}</select></div><div><label>시작일</label><input type="date" id="auditFrom" value="${esc(f.from)}"></div><div><label>종료일</label><input type="date" id="auditTo" value="${esc(f.to)}"></div></div><div class="btn-row"><button class="btn" onclick="applyAuditFilters()">필터 적용</button><button class="btn sec" onclick="resetAuditFilters()">초기화</button></div></div>
+  <div class="card table-card"><div class="panel-head" style="padding:20px 20px 0"><div><h2>관리자 변경 이력</h2><p class="sub">검색 결과 ${rows.length}건 · 최근순 최대 200건 표시</p></div></div><div class="tbl-wrap"><table><thead><tr><th>일시</th><th>접속자</th><th>작업</th><th>관리 영역</th><th>대상</th><th>변경 필드</th><th>사유</th><th></th></tr></thead><tbody>${rows.slice(0,200).map(log=>`<tr><td>${esc(auditWhen(log))}</td><td><b>${esc(log.operatorName||"미확인")}</b></td><td><span class="tag ${log.operation==="delete"?"off":log.operation==="create"?"pub":"prv"}">${esc(AUDIT_OPERATION_LABELS[log.operation]||log.operation)}</span></td><td>${esc(AUDIT_COLLECTION_LABELS[log.collection]||log.collection)}</td><td>${esc(log.label||log.targetId||"")}</td><td><span class="audit-change">${esc(auditChangedFields(log))}</span></td><td><span class="audit-change">${esc(log.reason||"")}</span></td><td><button class="btn sm sec" onclick="showAuditDetail('${log.id}')">상세</button></td></tr>`).join("")||"<tr><td colspan=8>변경 이력이 없습니다.</td></tr>"}</tbody></table></div></div>`;
+}
+async function showAuditDetail(id){
+  const log=(await dbAll("auditLogs")).find(x=>x.id===id); if(!log) return toast("감사 로그를 찾을 수 없습니다");
+  const detail={일시:auditWhen(log),관리자접속자명:log.operatorName,작업:AUDIT_OPERATION_LABELS[log.operation]||log.operation,관리영역:AUDIT_COLLECTION_LABELS[log.collection]||log.collection,대상:log.label,사유:log.reason,변경전:log.before,변경후:log.after};
+  modal(`<h3>변경 이력 상세</h3><p class="sub">이 기록은 수정하거나 삭제할 수 없습니다.</p><pre class="audit-detail">${esc(JSON.stringify(detail,null,2))}</pre><button class="btn sec" onclick="closeModal()">닫기</button>`);
+}
 
 /* ═══════════ 시작 ═══════════ */
 (async function(){
