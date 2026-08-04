@@ -1,4 +1,4 @@
-const CACHE = 'jhc-fleet-command-v10';
+const CACHE = 'jhc-fleet-command-v11';
 const ASSETS = ['./', './index.html', './manifest.json', './firebase-config.js', './icon-192.png', './icon-512.png', './logo-h.png', './fleet-login-bg.png'];
 
 self.addEventListener('install', e => {
