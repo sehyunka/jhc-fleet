@@ -281,7 +281,32 @@ function userSession(acc){
 }
 function vehicleOwners(plate){ return ACCOUNTS.filter(a=>accountVehiclePlates(a).includes(plate)); }
 function vehicleOwnerNames(plate){ return vehicleOwners(plate).map(a=>a.name).join(", "); }
+function normalizeCredential(value,trim=false){
+  const normalized=String(value??"").normalize("NFC");
+  return trim?normalized.trim():normalized;
+}
+let loginComposing=false,loginAfterComposition=false;
+function startLoginComposition(){ loginComposing=true; }
+function finishLoginComposition(){
+  loginComposing=false;
+  if(loginAfterComposition){ loginAfterComposition=false; setTimeout(doLogin,0); }
+}
+function requestLogin(){
+  if(loginComposing){ loginAfterComposition=true; return; }
+  doLogin();
+}
+function loginOnEnter(event){
+  if(event.key!=="Enter") return;
+  event.preventDefault();
+  if(event.isComposing||event.keyCode===229||loginComposing){
+    loginAfterComposition=true;
+    setTimeout(()=>{ if(loginAfterComposition&&!loginComposing){ loginAfterComposition=false; doLogin(); } },80);
+    return;
+  }
+  requestLogin();
+}
 function renderLogin(msg){
+  loginComposing=false; loginAfterComposition=false;
   document.body.classList.remove("inapp");
   const navEl=$("#navbar"); if(navEl) navEl.innerHTML="";
   $("#login").style.display="flex"; $("#app").innerHTML="";
@@ -291,22 +316,22 @@ function renderLogin(msg){
     <div class="login-kicker">CORPORATE FLEET OPERATIONS</div>
     ${msg?`<div class="banner warn">${esc(msg)}</div>`:""}
     <label>ID</label><input id="liId" value="${esc(localStorage.getItem("jhc2_saveid")||"")}" autocomplete="username">
-    <label>PW</label><input id="liPw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <label>PW</label><input id="liPw" type="password" autocomplete="current-password" oncompositionstart="startLoginComposition()" oncompositionend="finishLoginComposition()" onkeydown="loginOnEnter(event)">
     <div class="chk"><input type="checkbox" id="liSave" ${localStorage.getItem("jhc2_saveid")?"checked":""}><label for="liSave" style="margin:0">아이디 저장</label></div>
-    <button class="btn" style="background:var(--navy)" onclick="doLogin()">LOGIN</button>
+    <button class="btn" style="background:var(--navy)" onclick="requestLogin()">LOGIN</button>
     <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>본인 계정으로만 사용하시기 바랍니다. (초기 PW = 본인 이름)</div>
   </div>`;
 }
 async function doLogin(){
-  const id=$("#liId").value.trim(), pw=$("#liPw").value;
+  const id=normalizeCredential($("#liId").value,true), pw=normalizeCredential($("#liPw").value);
   if(!id||!pw) return toast("ID와 PW를 입력하세요");
   await ensureSeed(); await loadCore();
   if($("#liSave").checked) localStorage.setItem("jhc2_saveid",id); else localStorage.removeItem("jhc2_saveid");
-  if(id===SETTINGS.adminId&&pw===SETTINGS.adminPw){
+  if(id===normalizeCredential(SETTINGS.adminId,true)&&pw===normalizeCredential(SETTINGS.adminPw)){
     SESSION={aid:"__admin",name:"총무부 관리자",dept:"인사총무팀",role:"admin",vehicle:"",vehicles:[]};
     saveSession(); return enterApp(true);
   }
-  const acc=ACCOUNTS.find(a=>a.userId===id&&a.pw===pw);
+  const acc=ACCOUNTS.find(a=>normalizeCredential(a.userId,true)===id&&normalizeCredential(a.pw)===pw);
   if(!acc) return toast("ID 또는 비밀번호가 올바르지 않습니다");
   SESSION=userSession(acc);
   saveSession(); enterApp(true);
