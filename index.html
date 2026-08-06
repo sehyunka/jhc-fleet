@@ -155,7 +155,7 @@ const SEED_VEHICLES=[
 {plate:"189호1131",model:"셀토스",dept:"영업본부",type:"전용",cat:"렌트"},
 {plate:"189호1132",model:"셀토스",dept:"영업본부",type:"전용",cat:"렌트"}
 ];
-/* 조직도 전체 인원 (회장님·사장님 2인 제외) — ID=PW=이름 자동 생성 */
+/* 조직도 전체 인원 (회장님·사장님 2인 제외) — ID=이름, 초기 PW=1234 자동 생성 */
 const SEED_ORG={
 "부사장실":["가세현"],
 "영업본부":["조성민","조강연","이정수","정근영","유종성","박기범","손만제","김도원","구현수","진소우","김승제","김규섭"],
@@ -185,6 +185,7 @@ const MAINT_ITEMS=[
 {name:"타이어",km:50000,mo:36},{name:"에어컨필터",km:15000,mo:12},{name:"와이퍼",km:0,mo:12},
 {name:"미션오일",km:80000,mo:0},{name:"냉각수",km:40000,mo:24},{name:"배터리",km:60000,mo:36}];
 const COMPANY="재현하늘창";
+const INITIAL_EMPLOYEE_PASSWORD="1234";
 
 /* ═══════════ 저장소 (Firebase ↔ 기기저장 자동 전환) ═══════════ */
 let useFB=false, fdb=null;
@@ -233,7 +234,7 @@ async function ensureSeed(){
     }
     for(const v of SEED_VEHICLES) await dbAdd("vehicles",{...v,active:true});
     for(const dept of Object.keys(SEED_ORG)) for(const name of SEED_ORG[dept])
-      await dbAdd("accounts",{name,dept,userId:name,pw:name,vehicle:SEED_VMAP[name]||""});
+      await dbAdd("accounts",{name,dept,userId:name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:SEED_VMAP[name]||""});
     st=Object.assign({adminId:"jhintex",adminPw:"jhintex",extraHolidays:"",seedV:2},st||{});
     st.seedV=2; await saveSettings(st);
   }
@@ -329,6 +330,13 @@ function passwordMatches(account,entered){
   const stored=normalizeCredential(account?.pw,true), value=normalizeCredential(entered,true);
   return account?.pwCaseInsensitive===true?stored.toLowerCase()===value.toLowerCase():stored===value;
 }
+function isLegacyInitialPassword(account){
+  return !!account&&normalizeCredential(account.pw,true)===normalizeCredential(account.name,true);
+}
+function accountPasswordState(account){
+  if(account?.passwordStatus==="initial"||isLegacyInitialPassword(account)) return "initial";
+  return "changed";
+}
 function validNewPassword(value){
   return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/.test(value);
 }
@@ -421,7 +429,7 @@ function renderLogin(msg){
     <div id="adminOperatorWrap" style="display:none"><label>관리자 접속자명 <span class="required">필수</span></label><select id="liOperator"><option value="">접속 담당자 선택</option>${ADMIN_OPERATORS.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("")}</select><p class="field-help">관리자 계정으로 접속할 때만 선택하며 모든 변경 이력에 기록됩니다.</p></div>
     <div class="chk"><input type="checkbox" id="liSave" ${localStorage.getItem("jhc2_saveid")?"checked":""}><label for="liSave" style="margin:0">아이디 저장</label></div>
     <button class="btn" style="background:var(--navy)" onclick="requestLogin()">LOGIN</button>
-    <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>본인 계정으로만 사용하시기 바랍니다. (초기 PW = 본인 이름)</div>
+    <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>본인 계정으로만 사용하시기 바랍니다. (초기 PW = ${INITIAL_EMPLOYEE_PASSWORD})</div>
   </div>`;
   toggleAdminOperatorField();
 }
@@ -942,7 +950,7 @@ async function chMyPw(){
   if(!passwordMatches(acc,$("#cpw").value)) return toast("현재 비밀번호가 틀립니다");
   const p=$("#npw").value.trim();
   if(!validNewPassword(p)) return toast("새 비밀번호는 영문+숫자 6자리 이상이어야 하며 특수문자는 사용할 수 없습니다");
-  await dbUpd("accounts",acc.id,{pw:p.toLowerCase(),pwCaseInsensitive:true});
+  await dbUpd("accounts",acc.id,{pw:p.toLowerCase(),pwCaseInsensitive:true,passwordStatus:"changed"});
   toast("비밀번호가 변경되었습니다. 영문 대·소문자는 동일하게 인식됩니다");
 }
 
@@ -1176,10 +1184,11 @@ async function delVeh(id){
   closeModal(); toast("차량 삭제(비활성) 처리됨"); nav("admin");
 }
 async function aAcc(){
-  $("#aBody").innerHTML=`<div class="card"><button class="btn sm grn" onclick="accForm()">＋ 계정 추가</button>
-  <p class="sub" style="margin-top:6px">초기 계정: ID=PW=이름 (조직도 기준, 회장님·사장님 제외) · 지정 차량은 계정별 최대 ${MAX_ASSIGNED_VEHICLES}대 · 관리부서에서 변경</p></div>
-  <div class="card"><div class="tbl-wrap"><table><thead><tr><th>이름</th><th>ID</th><th>부서</th><th>지정차량</th><th></th><th></th><th></th></tr></thead><tbody>
-  ${ACCOUNTS.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.userId)}</td><td>${esc(a.dept)}</td><td>${accountVehiclePlates(a).length?accountVehiclePlates(a).map(esc).join("<br>"):"-"}</td>
+  const legacyCount=ACCOUNTS.filter(isLegacyInitialPassword).length,changedCount=ACCOUNTS.filter(a=>accountPasswordState(a)==="changed").length;
+  $("#aBody").innerHTML=`<div class="card"><div class="btn-row"><button class="btn sm grn" onclick="accForm()">＋ 계정 추가</button><button class="btn sm" onclick="bulkInitialPwForm()" ${legacyCount?"":"disabled"}>초기 PW 1234 일괄 적용 (${legacyCount}명)</button></div>
+  <p class="sub" style="margin-top:6px">초기 계정: ID=이름 · PW=${INITIAL_EMPLOYEE_PASSWORD} · 기존 PW가 이름인 ${legacyCount}명만 일괄 변경 대상 · 비밀번호 변경 완료 ${changedCount}명 제외 · 지정 차량은 계정별 최대 ${MAX_ASSIGNED_VEHICLES}대</p></div>
+  <div class="card"><div class="tbl-wrap"><table><thead><tr><th>이름</th><th>ID</th><th>부서</th><th>PW 상태</th><th>지정차량</th><th></th><th></th><th></th></tr></thead><tbody>
+  ${ACCOUNTS.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.userId)}</td><td>${esc(a.dept)}</td><td>${accountPasswordState(a)==="changed"?`<span class="tag prv">변경완료</span>`:`<span class="tag pub">초기 PW</span>`}</td><td>${accountVehiclePlates(a).length?accountVehiclePlates(a).map(esc).join("<br>"):"-"}</td>
   <td><button class="btn sm sec" onclick="accForm('${a.id}')">수정</button></td>
   <td><button class="btn sm sec" onclick="resetPwForm('${a.id}')">PW초기화</button></td>
   <td><button class="btn sm red" onclick="accountDeleteForm('${a.id}')">삭제</button></td></tr>`).join("")}
@@ -1194,7 +1203,7 @@ function accForm(id){
   modal(`<h3>${id?"계정 수정 (부서이동·차량지정)":"계정 추가"}</h3>
   <label>이름</label><input id="aN" value="${esc(a.name)}">
   <label>ID</label><input id="aI" value="${esc(a.userId)}" placeholder="비우면 이름과 동일">
-  ${id?"":`<label>초기 PW</label><input id="aP" placeholder="비우면 이름과 동일">`}
+  ${id?"":`<label>초기 PW</label><input id="aP" value="${INITIAL_EMPLOYEE_PASSWORD}" placeholder="비우면 ${INITIAL_EMPLOYEE_PASSWORD}">`}
   <label>부서</label><input id="aD" value="${esc(a.dept)}" list="deptListA">
   <datalist id="deptListA">${[...new Set(ACCOUNTS.map(x=>x.dept).concat(Object.keys(SEED_ORG)))].map(d=>`<option value="${esc(d)}">`).join("")}</datalist>
   <div class="assignment-count"><label style="margin:0">지정 차량</label><strong id="aVCount">${current.size}/${MAX_ASSIGNED_VEHICLES}대 선택</strong></div>
@@ -1219,18 +1228,42 @@ async function saveAcc(id){
   const dup=ACCOUNTS.find(a=>a.userId===o.userId&&a.id!==id); if(dup) return toast("이미 존재하는 ID입니다");
   const before=id?ACCOUNTS.find(a=>a.id===id):null,reason=id?$("#aReason").value.trim():"신규 계정 등록";
   if(id&&!reason) return toast("변경 사유를 입력하세요");
-  if(!id) o.pw=($("#aP").value||name);
+  if(!id){ o.pw=($("#aP").value||INITIAL_EMPLOYEE_PASSWORD); o.pwCaseInsensitive=false; o.passwordStatus="initial"; o.initialPasswordVersion=2; }
   await auditedMutation({operation:id?"update":"create",collection:"accounts",id:id||undefined,before,after:o,reason,label:name});
   closeModal(); toast("저장됨"); nav("admin");
 }
 function resetPwForm(id){
   const a=ACCOUNTS.find(x=>x.id===id); if(!a) return toast("계정을 찾을 수 없습니다");
-  modal(`<h3>비밀번호 초기화</h3><div class="banner warn">${esc(a.name)} 계정의 비밀번호를 기존 초기값인 이름으로 되돌립니다.</div><label>초기화 사유 <span class="required">필수</span></label><textarea id="rpReason" rows="3"></textarea><button class="btn" onclick="resetPw('${id}')">초기화 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+  modal(`<h3>비밀번호 초기화</h3><div class="banner warn">${esc(a.name)} 계정의 ID를 이름으로, 초기 비밀번호를 ${INITIAL_EMPLOYEE_PASSWORD}로 설정합니다.</div><label>초기화 사유 <span class="required">필수</span></label><textarea id="rpReason" rows="3"></textarea><button class="btn" onclick="resetPw('${id}')">초기화 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
 }
 async function resetPw(id){
   const before=ACCOUNTS.find(a=>a.id===id),reason=$("#rpReason")?.value.trim(); if(!before) return toast("계정을 찾을 수 없습니다"); if(!reason) return toast("초기화 사유를 입력하세요");
-  await auditedMutation({operation:"update",collection:"accounts",id,before,after:{pw:before.name,pwCaseInsensitive:false},reason,label:before.name});
-  closeModal(); toast("PW가 이름으로 초기화됨"); nav("admin");
+  await auditedMutation({operation:"update",collection:"accounts",id,before,after:{userId:before.name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2},reason,label:before.name});
+  closeModal(); toast(`ID=${before.name} · PW=${INITIAL_EMPLOYEE_PASSWORD}로 초기화됨`); nav("admin");
+}
+function bulkInitialPwForm(){
+  const targets=ACCOUNTS.filter(isLegacyInitialPassword),excluded=ACCOUNTS.length-targets.length;
+  if(!targets.length) return toast("이름 비밀번호를 유지하는 계정이 없습니다");
+  modal(`<h3>초기 비밀번호 1234 일괄 적용</h3><div class="banner warn">현재 PW가 본인 이름과 동일한 <b>${targets.length}명</b>만 ID=이름, PW=${INITIAL_EMPLOYEE_PASSWORD}로 변경합니다.<br>이미 비밀번호를 변경한 ${excluded}명은 제외됩니다.</div><label>변경 사유 <span class="required">필수</span></label><textarea id="bpReason" rows="3">초기 비밀번호 정책 변경 (이름 → ${INITIAL_EMPLOYEE_PASSWORD})</textarea><button class="btn" onclick="bulkInitialPw1234()">${targets.length}명 변경 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+}
+async function bulkInitialPw1234(){
+  if(!isAdmin()) return toast("관리자만 실행할 수 있습니다");
+  const reason=$("#bpReason")?.value.trim(); if(!reason) return toast("변경 사유를 입력하세요");
+  const current=await dbAll("accounts"),targets=current.filter(isLegacyInitialPassword);
+  if(!targets.length){ closeModal(); return toast("변경 대상 계정이 없습니다"); }
+  const patches=targets.map(before=>({before,patch:{userId:before.name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2}}));
+  if(useFB){
+    const batch=fdb.batch();
+    for(const {before,patch} of patches){
+      batch.set(fdb.collection("accounts").doc(before.id),patch,{merge:true});
+      const logRef=fdb.collection("auditLogs").doc();
+      batch.set(logRef,{...auditRecord({operation:"update",collection:"accounts",targetId:before.id,label:before.name,before,after:{...before,...patch},reason}),serverAt:firebase.firestore.FieldValue.serverTimestamp()});
+    }
+    await batch.commit();
+  }else{
+    for(const {before,patch} of patches) await auditedMutation({operation:"update",collection:"accounts",id:before.id,before,after:patch,reason,label:before.name});
+  }
+  await loadCore(); closeModal(); toast(`${patches.length}명의 초기 PW를 ${INITIAL_EMPLOYEE_PASSWORD}로 변경했습니다`); nav("admin");
 }
 function accountDeleteForm(id){
   const a=ACCOUNTS.find(x=>x.id===id); if(!a) return toast("계정을 찾을 수 없습니다");
