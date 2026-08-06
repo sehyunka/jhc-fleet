@@ -2,35 +2,84 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 감사 로그는 앱에서 생성과 조회만 허용합니다.
-    // update/delete는 어떤 웹 클라이언트 요청에도 허용하지 않습니다.
+    function signedInWithVerifiedEmail() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+
+    function rootAdmin() {
+      return signedInWithVerifiedEmail()
+        && request.auth.token.email == "sehyun.ka@gmail.com";
+    }
+
+    function listedAdmin() {
+      return signedInWithVerifiedEmail()
+        && exists(/databases/$(database)/documents/adminAccess/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/adminAccess/$(request.auth.token.email)).data.active == true;
+    }
+
+    function isAdmin() {
+      return rootAdmin() || listedAdmin();
+    }
+
+    // 가세현 최초 관리자만 다른 관리자 Google 계정을 등록·변경할 수 있습니다.
+    match /adminAccess/{email} {
+      allow read: if isAdmin();
+      allow create, update, delete: if rootAdmin();
+    }
+
+    // 감사 로그는 인증된 관리자만 추가·조회할 수 있으며 영구적으로 수정·삭제를 거부합니다.
     match /auditLogs/{auditId} {
-      allow read, create: if true;
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.adminEmail == request.auth.token.email
+        && request.resource.data.adminUid == request.auth.uid;
       allow update, delete: if false;
     }
 
-    // 기존 앱은 Firebase Auth 없이 자체 계정으로 동작하므로
-    // 기존 컬렉션의 현재 읽기/쓰기 동작을 그대로 유지합니다.
+    // 직원 앱의 조회는 유지하되 관리자 설정 데이터의 변경은 Google 인증 관리자만 허용합니다.
     match /settings/{documentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
     match /vehicles/{documentId} {
-      allow read, write: if true;
-    }
-    match /accounts/{documentId} {
-      allow read, write: if true;
-    }
-    match /users/{documentId} {
-      allow read, write: if true;
-    }
-    match /trips/{documentId} {
-      allow read, write: if true;
-    }
-    match /maintenance/{documentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
     match /notices/{documentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /users/{documentId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 기존 직원 자체 로그인과 비밀번호 변경 기능을 유지합니다.
+    // 관리자가 아닌 요청은 비밀번호 관련 필드만 변경할 수 있습니다.
+    match /accounts/{documentId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['pw', 'pwCaseInsensitive', 'passwordStatus']);
+    }
+
+    // 직원은 운행을 시작하고 본인이 사용하는 화면에서 종료 필드만 채울 수 있습니다.
+    // 전체 기록 수정·삭제는 Google 인증 관리자만 가능합니다.
+    match /trips/{documentId} {
+      allow read, create: if true;
+      allow update: if isAdmin()
+        || request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['endKm', 'dist', 'endDate', 'endTime', 'status']);
+      allow delete: if isAdmin();
+    }
+
+    // 직원의 정비 기록 등록은 유지하고, 저장 후 수정·삭제는 관리자만 허용합니다.
+    match /maintenance/{documentId} {
+      allow read, create: if true;
+      allow update, delete: if isAdmin();
     }
   }
 }

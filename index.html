@@ -10,6 +10,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="firebase-config.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -186,12 +187,20 @@ const MAINT_ITEMS=[
 {name:"미션오일",km:80000,mo:0},{name:"냉각수",km:40000,mo:24},{name:"배터리",km:60000,mo:36}];
 const COMPANY="재현하늘창";
 const INITIAL_EMPLOYEE_PASSWORD="1234";
+const ROOT_ADMIN_EMAIL="sehyun.ka@gmail.com";
+const ROOT_ADMIN_NAME="가세현";
+const ADMIN_OPERATORS=["곽봉수","빈윤정","연은주","지석근","엄지용","가세현"];
 
 /* ═══════════ 저장소 (Firebase ↔ 기기저장 자동 전환) ═══════════ */
-let useFB=false, fdb=null;
+let useFB=false, fdb=null, fauth=null;
 try{
   const c=window.FIREBASE_CONFIG||{};
-  if(c.apiKey && !/여기에/.test(c.apiKey)){ firebase.initializeApp(c); fdb=firebase.firestore(); useFB=true; }
+  if(c.apiKey && !/여기에/.test(c.apiKey)){
+    firebase.initializeApp(c);
+    fdb=firebase.firestore();
+    fauth=firebase.auth();
+    useFB=true;
+  }
 }catch(e){ console.warn("Firebase 초기화 실패 → 기기저장 모드", e); }
 const LS={
   get(k){ try{return JSON.parse(localStorage.getItem("jhc2_"+k))||[]}catch(e){return[]} },
@@ -235,7 +244,7 @@ async function ensureSeed(){
     for(const v of SEED_VEHICLES) await dbAdd("vehicles",{...v,active:true});
     for(const dept of Object.keys(SEED_ORG)) for(const name of SEED_ORG[dept])
       await dbAdd("accounts",{name,dept,userId:name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:SEED_VMAP[name]||""});
-    st=Object.assign({adminId:"jhintex",adminPw:"jhintex",extraHolidays:"",seedV:2},st||{});
+    st=Object.assign({extraHolidays:"",seedV:2},st||{});
     st.seedV=2; await saveSettings(st);
   }
   SETTINGS=st;
@@ -273,8 +282,12 @@ function openTrip(trips){ return trips.filter(isRunningTrip).sort((a,b)=>(b.date
 let SESSION=null;
 function saveSession(){ localStorage.setItem("jhc2_sess",JSON.stringify(SESSION)); }
 function loadSession(){ try{SESSION=JSON.parse(localStorage.getItem("jhc2_sess"))}catch(e){SESSION=null} }
-function isAdmin(){ return SESSION&&SESSION.role==="admin"&&SESSION.aid==="__admin"; }
-const ADMIN_OPERATORS=["곽봉수","빈윤정","연은주","지석근","가세현"];
+function normalizedEmail(value){ return String(value||"").trim().toLowerCase(); }
+function isAdmin(){
+  const user=fauth?.currentUser,email=normalizedEmail(user?.email);
+  return !!(SESSION&&SESSION.role==="admin"&&user&&email&&email===normalizedEmail(SESSION.adminEmail));
+}
+function isRootAdmin(){ return isAdmin()&&normalizedEmail(SESSION.adminEmail)===ROOT_ADMIN_EMAIL; }
 const MAX_ASSIGNED_VEHICLES=3;
 function isSalesDept(dept){ return /영업/.test(String(dept||"")); }
 function accountVehiclePlates(account){
@@ -350,7 +363,7 @@ function auditSafe(value){
 function auditRecord({operation,collection,targetId,label,before,after,reason}){
   return {
     operation,collection,targetId:targetId||"",label:label||targetId||collection,
-    operatorName:SESSION?.operatorName||"미확인",adminId:SETTINGS.adminId||"",reason:reason||"신규 등록",
+    operatorName:SESSION?.operatorName||"미확인",adminEmail:SESSION?.adminEmail||"",adminUid:SESSION?.adminUid||"",reason:reason||"신규 등록",
     before:auditSafe(before||null),after:auditSafe(after||null),createdAt:new Date().toISOString()
   };
 }
@@ -407,13 +420,6 @@ function loginOnEnter(event){
   if((event.isComposing||event.keyCode===229||loginComposing)&&event.target?.blur) event.target.blur();
   queueSettledLogin();
 }
-function toggleAdminOperatorField(){
-  const wrap=$("#adminOperatorWrap"), id=$("#liId"); if(!wrap||!id) return;
-  const adminId=normalizeCredential(SETTINGS.adminId||"jhintex",true);
-  const show=normalizeCredential(id.value,true)===adminId;
-  wrap.style.display=show?"block":"none";
-  if(!show&&$("#liOperator")) $("#liOperator").value="";
-}
 function renderLogin(msg){
   loginComposing=false; loginAfterComposition=false; clearTimeout(loginSettleTimer); loginSettleTimer=null;
   document.body.classList.remove("inapp");
@@ -424,35 +430,85 @@ function renderLogin(msg){
     <img src="logo-h.png" alt="${COMPANY}">
     <div class="login-kicker">CORPORATE FLEET OPERATIONS</div>
     ${msg?`<div class="banner warn">${esc(msg)}</div>`:""}
-    <label>ID</label><input id="liId" value="${esc(localStorage.getItem("jhc2_saveid")||"")}" autocomplete="username" autocapitalize="off" spellcheck="false" oninput="toggleAdminOperatorField()" oncompositionstart="startLoginComposition()" oncompositionend="finishLoginComposition()" onkeydown="loginOnEnter(event)">
+    <label>ID</label><input id="liId" value="${esc(localStorage.getItem("jhc2_saveid")||"")}" autocomplete="username" autocapitalize="off" spellcheck="false" oncompositionstart="startLoginComposition()" oncompositionend="finishLoginComposition()" onkeydown="loginOnEnter(event)">
     <label>PW</label><input id="liPw" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" oncompositionstart="startLoginComposition()" oncompositionend="finishLoginComposition()" onkeydown="loginOnEnter(event)">
-    <div id="adminOperatorWrap" style="display:none"><label>관리자 접속자명 <span class="required">필수</span></label><select id="liOperator"><option value="">접속 담당자 선택</option>${ADMIN_OPERATORS.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("")}</select><p class="field-help">관리자 계정으로 접속할 때만 선택하며 모든 변경 이력에 기록됩니다.</p></div>
     <div class="chk"><input type="checkbox" id="liSave" ${localStorage.getItem("jhc2_saveid")?"checked":""}><label for="liSave" style="margin:0">아이디 저장</label></div>
-    <button class="btn" style="background:var(--navy)" onclick="requestLogin()">LOGIN</button>
-    <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>본인 계정으로만 사용하시기 바랍니다. (초기 PW = ${INITIAL_EMPLOYEE_PASSWORD})</div>
+    <button class="btn" style="background:var(--navy)" onclick="requestLogin()">직원 로그인</button>
+    <button class="btn sec" onclick="requestAdminGoogleLogin()">Google 관리자 로그인</button>
+    <p class="field-help" style="text-align:center">관리자는 등록된 본인 Google 계정으로만 접속할 수 있습니다.</p>
+    <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>직원 초기 PW = ${INITIAL_EMPLOYEE_PASSWORD}</div>
   </div>`;
-  toggleAdminOperatorField();
 }
 async function doLogin(){
   const id=normalizeCredential($("#liId").value,true), pw=normalizeCredential($("#liPw").value,true);
   if(!id||!pw) return toast("ID와 PW를 입력하세요");
   await ensureSeed(); await loadCore();
   if($("#liSave").checked) localStorage.setItem("jhc2_saveid",id); else localStorage.removeItem("jhc2_saveid");
-  if(id===normalizeCredential(SETTINGS.adminId,true)&&pw===normalizeCredential(SETTINGS.adminPw,true)){
-    const operatorName=$("#liOperator")?.value||"";
-    if(!ADMIN_OPERATORS.includes(operatorName)) return toast("관리자 접속자명을 선택하세요");
-    seenNotices.clear();
-    aTab="status"; fleetStatusFilter="running";
-    SESSION={aid:"__admin",name:"총무부 관리자",operatorName,dept:"인사총무팀",role:"admin",vehicle:"",vehicles:[],loginAt:new Date().toISOString()};
-    saveSession(); return enterApp(true);
-  }
   const acc=ACCOUNTS.find(a=>normalizeCredential(a.userId,true)===id&&passwordMatches(a,pw));
   if(!acc) return toast("ID 또는 비밀번호가 올바르지 않습니다");
+  if(fauth?.currentUser) await fauth.signOut();
   seenNotices.clear();
   SESSION=userSession(acc);
   saveSession(); enterApp(true);
 }
-function logout(){ seenNotices.clear(); SESSION=null; localStorage.removeItem("jhc2_sess"); renderLogin(); }
+async function adminProfileForUser(user){
+  const email=normalizedEmail(user?.email);
+  if(!email) return null;
+  if(email===ROOT_ADMIN_EMAIL) return {name:ROOT_ADMIN_NAME,email,root:true,active:true};
+  if(!useFB) return null;
+  const snap=await fdb.collection("adminAccess").doc(email).get();
+  if(!snap.exists||snap.data().active===false) return null;
+  const profile=snap.data();
+  return ADMIN_OPERATORS.includes(profile.name)?{...profile,email,root:false}:null;
+}
+function createAdminSession(user,profile){
+  return {aid:"__admin",name:"총무부 관리자",operatorName:profile.name,dept:"인사총무팀",role:"admin",vehicle:"",vehicles:[],adminEmail:normalizedEmail(user.email),adminUid:user.uid,root:profile.root===true,loginAt:new Date().toISOString()};
+}
+async function cleanupLegacyAdminCredentials(){
+  if(!useFB||!isRootAdmin()) return;
+  const snap=await fdb.collection("settings").doc("main").get();
+  if(!snap.exists) return;
+  const data=snap.data();
+  if(!Object.prototype.hasOwnProperty.call(data,"adminId")&&!Object.prototype.hasOwnProperty.call(data,"adminPw")) return;
+  const settingsRef=fdb.collection("settings").doc("main"),logRef=fdb.collection("auditLogs").doc(),batch=fdb.batch();
+  batch.update(settingsRef,{adminId:firebase.firestore.FieldValue.delete(),adminPw:firebase.firestore.FieldValue.delete()});
+  batch.set(logRef,{...auditRecord({operation:"update",collection:"settings",targetId:"main",label:"기존 공용 관리자 인증정보",before:{legacyAdminCredentials:"존재"},after:{legacyAdminCredentials:"삭제됨"},reason:"Google 개별 관리자 인증 전환"}),serverAt:firebase.firestore.FieldValue.serverTimestamp()});
+  await batch.commit();
+  delete SETTINGS.adminId; delete SETTINGS.adminPw;
+}
+async function requestAdminGoogleLogin(){
+  if(!fauth||!useFB) return toast("Firebase 연결이 필요합니다");
+  try{
+    await fauth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    const provider=new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({prompt:"select_account"});
+    const result=await fauth.signInWithPopup(provider),profile=await adminProfileForUser(result.user);
+    if(!profile){ await fauth.signOut(); return toast("관리자로 등록되지 않은 Google 계정입니다"); }
+    await ensureSeed(); await loadCore();
+    seenNotices.clear(); aTab="status"; fleetStatusFilter="running";
+    SESSION=createAdminSession(result.user,profile); saveSession();
+    try{ await cleanupLegacyAdminCredentials(); }catch(e){ console.warn("기존 관리자 인증정보 정리 실패",e); }
+    await enterApp(true);
+  }catch(e){
+    if(e?.code!=="auth/popup-closed-by-user"&&e?.code!=="auth/cancelled-popup-request") console.warn(e);
+    if(fauth?.currentUser) try{await fauth.signOut();}catch(signOutError){console.warn(signOutError);}
+    toast(e?.code==="auth/popup-closed-by-user"?"Google 로그인이 취소되었습니다":"Google 관리자 로그인에 실패했습니다");
+  }
+}
+async function restoreAdminSession(){
+  const user=fauth?.currentUser;
+  if(!user) return false;
+  try{
+    const profile=await adminProfileForUser(user);
+    if(!profile){ await fauth.signOut(); return false; }
+    SESSION=createAdminSession(user,profile); saveSession(); return true;
+  }catch(e){ console.warn("관리자 세션 확인 실패",e); return false; }
+}
+async function logout(){
+  seenNotices.clear(); SESSION=null; localStorage.removeItem("jhc2_sess");
+  if(fauth?.currentUser){ try{await fauth.signOut();}catch(e){console.warn(e);} }
+  renderLogin();
+}
 const PAGE_META={
   home:["운영 현황","법인차량 운영 상태와 필요한 업무를 한눈에 확인합니다."],
   drive:["운행 입력","차량 선택부터 출발·도착 기록까지 빠르게 처리합니다."],
@@ -1376,13 +1432,17 @@ async function delNotice(id){
   closeModal(); toast("삭제됨"); nav("admin");
 }
 async function aSet(){
+  const access=useFB?await dbAll("adminAccess"):[];
+  const accessByName=new Map(access.filter(a=>a.active!==false).map(a=>[a.name,a]));
   $("#aBody").innerHTML=`
-  <div class="card"><h2>관리자 계정 변경</h2>
-    <label>관리자 ID</label><input id="nadId" value="${esc(SETTINGS.adminId)}">
-    <label>새 비밀번호 (비우면 유지)</label><input type="password" id="nadPw">
-    <label>변경 사유 <span class="required">필수</span></label><textarea id="nadReason" rows="2"></textarea>
-    <button class="btn sm" onclick="chAdmin()">변경</button></div>
-  <div class="card"><h2>관리자 접속 담당자</h2><p class="sub">관리자 로그인 시 다음 5명 중 접속자를 반드시 선택합니다. 모든 변경 이력에 이름이 저장됩니다.</p><div class="btn-row">${ADMIN_OPERATORS.map(n=>`<span class="tag pub">${esc(n)}</span>`).join("")}</div></div>
+  <div class="card"><h2>Google 관리자 계정</h2>
+    <p class="sub">관리자는 공용 ID/PW가 아닌 등록된 본인 Google 계정으로만 로그인합니다. 가세현은 최초 관리자이며 나머지 5명의 계정을 관리할 수 있습니다.</p>
+    ${ADMIN_OPERATORS.map((name,index)=>{
+      const root=name===ROOT_ADMIN_NAME,item=root?{email:ROOT_ADMIN_EMAIL}:accessByName.get(name),email=normalizedEmail(item?.email||item?.id||"");
+      return `<div class="activity-row"><div><b>${index+1}. ${esc(name)}</b><div class="sub">${root?"최초 관리자 · 고정":"개별 Google 계정"}</div></div><div style="grid-column:span 3">${isRootAdmin()&&!root?`<input id="adminEmail${index}" type="email" value="${esc(email)}" placeholder="name@gmail.com" autocomplete="off">`:`<div class="field-box">${esc(email||"미등록")}</div>`}</div></div>`;
+    }).join("")}
+    ${isRootAdmin()?`<label>변경 사유 <span class="required">필수</span></label><textarea id="adminAccessReason" rows="2" placeholder="예: 관리자 Google 계정 최초 등록"></textarea><button class="btn sm" onclick="saveAdminAccess()">관리자 계정 저장</button>`:`<div class="banner info">관리자 Google 계정 등록·변경은 최초 관리자 가세현만 할 수 있습니다.</div>`}
+  </div>
   <div class="card"><h2>추가 휴무일(공휴일) 등록</h2>
     <p class="sub">기본: 토·일요일 + 법정공휴일(2026~2027 내장). 임시휴무·창립기념일 등을 YYYY-MM-DD 형식으로 추가.</p>
     <textarea id="exh" rows="4" placeholder="2026-08-14">${esc(SETTINGS.extraHolidays||"")}</textarea>
@@ -1391,14 +1451,44 @@ async function aSet(){
   <div class="card"><h2>저장 모드</h2><p class="sub">${useFB?"✅ Firebase 서버 연결됨 — 모든 기기의 기록이 실시간 공유됩니다.":"⚠️ 기기저장 모드 — 이 기기에만 저장됩니다. firebase-config.js 를 설정하면 전 직원 기록이 공유됩니다 (가이드 참고)."}</p></div>
   <button class="btn red" onclick="logout()">로그아웃</button>`;
 }
-async function chAdmin(){
-  const id=$("#nadId").value.trim(), p=$("#nadPw").value,reason=$("#nadReason").value.trim();
-  if(!id) return toast("ID를 입력하세요");
+async function saveAdminAccess(){
+  if(!isRootAdmin()) return toast("최초 관리자 가세현만 변경할 수 있습니다");
+  if(!useFB) return toast("Firebase 연결이 필요합니다");
+  const reason=$("#adminAccessReason")?.value.trim();
   if(!reason) return toast("변경 사유를 입력하세요");
-  const patch={adminId:id}; if(p){ if(p.length<4) return toast("PW는 4자 이상"); patch.adminPw=p; }
-  const before={adminId:SETTINGS.adminId,adminPw:SETTINGS.adminPw};
-  await auditedMutation({operation:"update",collection:"settings",id:"main",before,after:patch,reason,label:"관리자 계정"});
-  Object.assign(SETTINGS,patch); toast("관리자 계정 변경됨");
+  const editable=ADMIN_OPERATORS.filter(name=>name!==ROOT_ADMIN_NAME);
+  const next=editable.map(name=>{
+    const index=ADMIN_OPERATORS.indexOf(name);
+    return {name,index,email:normalizedEmail($("#adminEmail"+index)?.value)};
+  });
+  const invalid=next.find(x=>x.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.email));
+  if(invalid) return toast(`${invalid.name}의 이메일 형식을 확인하세요`);
+  const emails=next.map(x=>x.email).filter(Boolean);
+  if(new Set(emails).size!==emails.length||emails.includes(ROOT_ADMIN_EMAIL)) return toast("관리자별로 서로 다른 Google 계정을 입력하세요");
+  const current=await dbAll("adminAccess"),byName=new Map(current.map(x=>[x.name,x]));
+  const batch=fdb.batch(); let changes=0;
+  function addAudit(operation,targetId,label,before,after){
+    const logRef=fdb.collection("auditLogs").doc();
+    batch.set(logRef,{...auditRecord({operation,collection:"adminAccess",targetId,label,before,after,reason}),serverAt:firebase.firestore.FieldValue.serverTimestamp()});
+  }
+  for(const item of next){
+    const before=byName.get(item.name),oldEmail=normalizedEmail(before?.email||before?.id||"");
+    if(before&&oldEmail!==item.email){
+      batch.delete(fdb.collection("adminAccess").doc(before.id));
+      addAudit("delete",before.id,`${item.name} · ${oldEmail}`,before,null); changes++;
+    }
+    if(item.email&&oldEmail!==item.email){
+      const after={name:item.name,email:item.email,active:true,order:item.index+1,updatedAt:new Date().toISOString()};
+      batch.set(fdb.collection("adminAccess").doc(item.email),after);
+      addAudit("create",item.email,`${item.name} · ${item.email}`,null,after); changes++;
+    }else if(item.email&&before&&(before.active===false||before.order!==item.index+1||before.email!==item.email)){
+      const after={name:item.name,email:item.email,active:true,order:item.index+1,updatedAt:new Date().toISOString()};
+      batch.set(fdb.collection("adminAccess").doc(item.email),after,{merge:true});
+      addAudit("update",item.email,`${item.name} · ${item.email}`,before,{...before,...after}); changes++;
+    }
+  }
+  if(!changes) return toast("변경된 관리자 계정이 없습니다");
+  await batch.commit(); toast("Google 관리자 계정이 저장되었습니다"); nav("admin");
 }
 async function saveExh(){
   const extraHolidays=$("#exh").value.trim(),reason=$("#exhReason").value.trim(); if(!reason) return toast("변경 사유를 입력하세요");
@@ -1407,9 +1497,9 @@ async function saveExh(){
 }
 
 /* ═══════════ 관리자 변경 이력 (append-only) ═══════════ */
-const AUDIT_COLLECTION_LABELS={trips:"운행 기록",maintenance:"정비 기록",vehicles:"차량",accounts:"직원·계정",notices:"공지",settings:"앱 설정"};
+const AUDIT_COLLECTION_LABELS={trips:"운행 기록",maintenance:"정비 기록",vehicles:"차량",accounts:"직원·계정",notices:"공지",settings:"앱 설정",adminAccess:"관리자 권한"};
 const AUDIT_OPERATION_LABELS={create:"등록",update:"수정",delete:"삭제"};
-const AUDIT_FIELD_LABELS={date:"날짜",vehicle:"차량",model:"차종",dept:"부서",user:"사용자",startDate:"시작 일자",startTime:"시작 시간",endDate:"종료 일자",endTime:"종료 시간",startKm:"시작 km",endKm:"종료 km",dist:"운행거리",purpose:"목적·비고",status:"상태",offday:"휴무일",item:"정비 항목",km:"정비 km",shop:"정비소",cost:"비용",tireF:"앞 타이어",tireR:"뒤 타이어",memo:"메모",plate:"차량번호",type:"유형",cat:"구분",active:"활성 상태",name:"이름",userId:"ID",vehicles:"지정 차량",title:"제목",body:"내용",adminId:"관리자 ID",adminPw:"관리자 PW",extraHolidays:"추가 휴무일"};
+const AUDIT_FIELD_LABELS={date:"날짜",vehicle:"차량",model:"차종",dept:"부서",user:"사용자",startDate:"시작 일자",startTime:"시작 시간",endDate:"종료 일자",endTime:"종료 시간",startKm:"시작 km",endKm:"종료 km",dist:"운행거리",purpose:"목적·비고",status:"상태",offday:"휴무일",item:"정비 항목",km:"정비 km",shop:"정비소",cost:"비용",tireF:"앞 타이어",tireR:"뒤 타이어",memo:"메모",plate:"차량번호",type:"유형",cat:"구분",active:"활성 상태",name:"이름",email:"Google 계정",order:"표시 순서",userId:"ID",vehicles:"지정 차량",title:"제목",body:"내용",extraHolidays:"추가 휴무일"};
 function auditDate(log){
   try{ if(log.serverAt?.toDate) return log.serverAt.toDate(); }catch(e){}
   const d=new Date(log.createdAt||0); return Number.isNaN(d.getTime())?new Date(0):d;
@@ -1445,10 +1535,33 @@ async function showAuditDetail(id){
 }
 
 /* ═══════════ 시작 ═══════════ */
+async function waitForAuthReady(){
+  if(!fauth) return;
+  await new Promise(resolve=>{
+    let settled=false,unsubscribe=()=>{};
+    const done=()=>{ if(settled) return; settled=true; unsubscribe(); resolve(); };
+    unsubscribe=fauth.onAuthStateChanged(done,done);
+    setTimeout(done,5000);
+  });
+}
 (async function(){
   try{ await ensureSeed(); await loadCore(); }catch(e){ console.warn(e); }
   loadSession();
-  if(SESSION) enterApp(true); else renderLogin();
+  await waitForAuthReady();
+  if(SESSION?.role==="admin"){
+    if(await restoreAdminSession()){
+      try{ await cleanupLegacyAdminCredentials(); }catch(e){ console.warn("기존 관리자 인증정보 정리 실패",e); }
+      enterApp(true);
+    }else{
+      SESSION=null; localStorage.removeItem("jhc2_sess"); renderLogin("관리자 인증이 만료되었습니다. Google 계정으로 다시 로그인하세요.");
+    }
+  }else if(SESSION){
+    if(fauth?.currentUser) try{await fauth.signOut();}catch(e){console.warn(e);}
+    enterApp(true);
+  }else{
+    if(fauth?.currentUser) try{await fauth.signOut();}catch(e){console.warn(e);}
+    renderLogin();
+  }
   if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 })();
 </script>
