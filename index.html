@@ -243,7 +243,7 @@ async function ensureSeed(){
     }
     for(const v of SEED_VEHICLES) await dbAdd("vehicles",{...v,active:true});
     for(const dept of Object.keys(SEED_ORG)) for(const name of SEED_ORG[dept])
-      await dbAdd("accounts",{name,dept,userId:name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:SEED_VMAP[name]||""});
+      await dbAdd("accounts",{name,dept,userId:name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:SEED_VMAP[name]||"",sharedVehicleAccess:name==="가세현"});
     st=Object.assign({extraHolidays:"",seedV:2},st||{});
     st.seedV=2; await saveSettings(st);
   }
@@ -289,7 +289,6 @@ function isAdmin(){
 }
 function isRootAdmin(){ return isAdmin()&&normalizedEmail(SESSION.adminEmail)===ROOT_ADMIN_EMAIL; }
 const MAX_ASSIGNED_VEHICLES=3;
-function isSalesDept(dept){ return /영업/.test(String(dept||"")); }
 function accountVehiclePlates(account){
   if(!account) return [];
   const raw=Array.isArray(account.vehicles)&&account.vehicles.length?account.vehicles:(account.vehicle?[account.vehicle]:[]);
@@ -297,8 +296,9 @@ function accountVehiclePlates(account){
 }
 function userSession(acc){
   const vehicles=accountVehiclePlates(acc);
-  return {aid:acc.id,name:acc.name,dept:acc.dept,role:"user",vehicle:vehicles[0]||"",vehicles};
+  return {aid:acc.id,name:acc.name,dept:acc.dept,role:"user",vehicle:vehicles[0]||"",vehicles,sharedVehicleAccess:acc.sharedVehicleAccess===true};
 }
+function canUseSharedVehicles(account){ return account?.sharedVehicleAccess===true; }
 function vehicleOwners(plate){ return ACCOUNTS.filter(a=>accountVehiclePlates(a).includes(plate)); }
 function vehicleOwnerNames(plate){ return vehicleOwners(plate).map(a=>a.name).join(", "); }
 const HANGUL_INITIAL=[..."ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"];
@@ -582,7 +582,7 @@ function closeNotice(id){
 function visibleVehicles(){
   if(isAdmin()) return VEHICLES;
   const assigned=new Set(accountVehiclePlates(SESSION));
-  const publicAllowed=!isSalesDept(SESSION?.dept);
+  const publicAllowed=canUseSharedVehicles(SESSION);
   return VEHICLES.filter(v=>v.type==="공용"?publicAllowed:assigned.has(v.plate));
 }
 function canAccessVehicle(plate){
@@ -619,7 +619,7 @@ async function nav(v){
 }
 function offBanner(){ return isOffday(todayStr())?`<div class="banner warn">⚠️ 오늘은 휴무일(토·일·공휴일)입니다.<br>법인차량 운행은 사전 승인된 경우만 가능합니다.</div>`:""; }
 function personSelectors(selDept,selName,publicOnly=false){
-  const eligible=ACCOUNTS.filter(a=>!publicOnly||!isSalesDept(a.dept));
+  const eligible=ACCOUNTS.filter(a=>!publicOnly||canUseSharedVehicles(a));
   const depts=[...new Set(eligible.map(a=>a.dept))];
   if(!depts.includes(selDept)) selDept=depts[0]||"";
   const names=eligible.filter(a=>a.dept===selDept);
@@ -630,7 +630,7 @@ function personSelectors(selDept,selName,publicOnly=false){
 }
 function onDrvDept(){
   const d=$("#drvDept").value;
-  $("#drvName").innerHTML=ACCOUNTS.filter(a=>a.dept===d&&!isSalesDept(a.dept)).map(a=>`<option>${esc(a.name)}</option>`).join("");
+  $("#drvName").innerHTML=ACCOUNTS.filter(a=>a.dept===d&&canUseSharedVehicles(a)).map(a=>`<option>${esc(a.name)}</option>`).join("");
   const p=$("#purpose"); if(p&&!p.dataset.touched) p.value=/영업/.test(d)?"거래처 방문":"";
 }
 function maintAlerts(plate,trips,recs){
@@ -765,7 +765,8 @@ async function startDrive(plate,pubRequired){
   const name=$("#drvName")?$("#drvName").value:SESSION.name;
   const km=$("#startKm").value, pur=($("#purpose")?$("#purpose").value.trim():"");
   if(!name) return toast("이름을 선택하세요");
-  if(pubRequired&&isSalesDept(dept)) return toast("영업부서는 공용차량을 이용할 수 없습니다");
+  const driverAccount=ACCOUNTS.find(a=>a.dept===dept&&a.name===name);
+  if(pubRequired&&!canUseSharedVehicles(driverAccount)) return toast("공용차량 이용 권한이 없는 계정입니다");
   if(!km) return toast("시작 키로수를 입력하세요");
   if(pubRequired&&!pur) return toast("공용차량은 운행 목적을 반드시 입력해야 합니다");
   const off=isOffday(todayStr());
@@ -986,12 +987,12 @@ async function vHistoryLegacy(){
 async function vMy(){
   const assignedPlates=new Set(accountVehiclePlates(SESSION));
   const assigned=VEHICLES.filter(v=>assignedPlates.has(v.plate));
-  const publicCount=isSalesDept(SESSION?.dept)?0:VEHICLES.filter(v=>v.type==="공용").length;
+  const publicCount=canUseSharedVehicles(SESSION)?VEHICLES.filter(v=>v.type==="공용").length:0;
   $("#app").innerHTML=`
   <div class="card"><h2>👤 내 정보</h2>
     <p style="font-size:15px;margin:6px 0"><b>${esc(SESSION.name)}</b> · ${esc(SESSION.dept)}</p>
     <p class="sub">지정 차량 (${assigned.length}/${MAX_ASSIGNED_VEHICLES}대): ${assigned.length?assigned.map(v=>`${esc(v.plate)} (${esc(v.model)})`).join(", "):"없음"}</p>
-    <p class="sub">공용차량 이용: ${publicCount?`${publicCount}대 선택 가능`:"부서명에 ‘영업’이 포함되어 이용 대상 제외"}</p>
+    <p class="sub">공용차량 이용: ${publicCount?`${publicCount}대 선택 가능`:"권한 없음"}</p>
     <p class="sub">차량 지정 변경·부서 이동은 총무부에 문의하세요.</p></div>
   <div class="card"><h2>비밀번호 변경</h2>
     <label>현재 비밀번호</label><input type="password" id="cpw">
@@ -1242,9 +1243,9 @@ async function delVeh(id){
 async function aAcc(){
   const legacyCount=ACCOUNTS.filter(isLegacyInitialPassword).length,changedCount=ACCOUNTS.filter(a=>accountPasswordState(a)==="changed").length;
   $("#aBody").innerHTML=`<div class="card"><div class="btn-row"><button class="btn sm grn" onclick="accForm()">＋ 계정 추가</button><button class="btn sm" onclick="bulkInitialPwForm()" ${legacyCount?"":"disabled"}>초기 PW 1234 일괄 적용 (${legacyCount}명)</button></div>
-  <p class="sub" style="margin-top:6px">초기 계정: ID=이름 · PW=${INITIAL_EMPLOYEE_PASSWORD} · 기존 PW가 이름인 ${legacyCount}명만 일괄 변경 대상 · 비밀번호 변경 완료 ${changedCount}명 제외 · 지정 차량은 계정별 최대 ${MAX_ASSIGNED_VEHICLES}대</p></div>
-  <div class="card"><div class="tbl-wrap"><table><thead><tr><th>이름</th><th>ID</th><th>부서</th><th>PW 상태</th><th>지정차량</th><th></th><th></th><th></th></tr></thead><tbody>
-  ${ACCOUNTS.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.userId)}</td><td>${esc(a.dept)}</td><td>${accountPasswordState(a)==="changed"?`<span class="tag prv">변경완료</span>`:`<span class="tag pub">초기 PW</span>`}</td><td>${accountVehiclePlates(a).length?accountVehiclePlates(a).map(esc).join("<br>"):"-"}</td>
+  <p class="sub" style="margin-top:6px">초기 계정: ID=이름 · PW=${INITIAL_EMPLOYEE_PASSWORD} · 기존 PW가 이름인 ${legacyCount}명만 일괄 변경 대상 · 비밀번호 변경 완료 ${changedCount}명 제외 · 지정 차량은 계정별 최대 ${MAX_ASSIGNED_VEHICLES}대 · 공용차량은 계정별 이용 권한을 별도로 설정</p></div>
+  <div class="card"><div class="tbl-wrap"><table><thead><tr><th>이름</th><th>ID</th><th>부서</th><th>PW 상태</th><th>지정차량</th><th>공용차량</th><th></th><th></th><th></th></tr></thead><tbody>
+  ${ACCOUNTS.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.userId)}</td><td>${esc(a.dept)}</td><td>${accountPasswordState(a)==="changed"?`<span class="tag prv">변경완료</span>`:`<span class="tag pub">초기 PW</span>`}</td><td>${accountVehiclePlates(a).length?accountVehiclePlates(a).map(esc).join("<br>"):"-"}</td><td>${canUseSharedVehicles(a)?`<span class="tag pub">이용 가능</span>`:"-"}</td>
   <td><button class="btn sm sec" onclick="accForm('${a.id}')">수정</button></td>
   <td><button class="btn sm sec" onclick="resetPwForm('${a.id}')">PW초기화</button></td>
   <td><button class="btn sm red" onclick="accountDeleteForm('${a.id}')">삭제</button></td></tr>`).join("")}
@@ -1252,10 +1253,10 @@ async function aAcc(){
 }
 function accForm(id){
   if(!isAdmin()) return toast("관리자만 차량 지정을 변경할 수 있습니다");
-  const a=id?ACCOUNTS.find(x=>x.id===id):{name:"",userId:"",dept:"",vehicle:"",vehicles:[]};
+  const a=id?ACCOUNTS.find(x=>x.id===id):{name:"",userId:"",dept:"",vehicle:"",vehicles:[],sharedVehicleAccess:false};
   const current=new Set(accountVehiclePlates(a));
   const assignedDedicated=new Set(ACCOUNTS.filter(x=>x.id!==id).flatMap(accountVehiclePlates));
-  const opts=VEHICLES.filter(v=>v.type==="공용"||!assignedDedicated.has(v.plate)||current.has(v.plate));
+  const opts=VEHICLES.filter(v=>v.type!=="공용"&&(!assignedDedicated.has(v.plate)||current.has(v.plate)));
   modal(`<h3>${id?"계정 수정 (부서이동·차량지정)":"계정 추가"}</h3>
   <label>이름</label><input id="aN" value="${esc(a.name)}">
   <label>ID</label><input id="aI" value="${esc(a.userId)}" placeholder="비우면 이름과 동일">
@@ -1264,7 +1265,8 @@ function accForm(id){
   <datalist id="deptListA">${[...new Set(ACCOUNTS.map(x=>x.dept).concat(Object.keys(SEED_ORG)))].map(d=>`<option value="${esc(d)}">`).join("")}</datalist>
   <div class="assignment-count"><label style="margin:0">지정 차량</label><strong id="aVCount">${current.size}/${MAX_ASSIGNED_VEHICLES}대 선택</strong></div>
   <div class="assignment-list">${opts.map(v=>`<label class="assignment-item"><input type="checkbox" name="aVehicle" value="${esc(v.plate)}" ${current.has(v.plate)?"checked":""} onchange="limitVehicleChecks(this)"><span><strong>${esc(v.plate)} · ${esc(v.model)}</strong><small>${esc(v.type)} · ${esc(v.dept)}${v.type==="공용"?" · 중복 지정 가능":""}</small></span></label>`).join("")}</div>
-  <p class="field-help">최대 ${MAX_ASSIGNED_VEHICLES}대까지 선택할 수 있습니다. 전용차량은 한 계정에만 지정됩니다.</p>
+  <p class="field-help">전용차량은 최대 ${MAX_ASSIGNED_VEHICLES}대까지 선택할 수 있으며 한 계정에만 지정됩니다. 공용차량은 아래 이용 권한으로 일괄 허용합니다.</p>
+  <label class="assignment-item" style="margin-top:12px"><input type="checkbox" id="aSharedAccess" ${canUseSharedVehicles(a)?"checked":""}><span><strong>공용차량 이용 권한</strong><small>허용 시 지정 전용차량과 모든 공용차량을 조회·운행할 수 있습니다.</small></span></label>
   ${id?`<label>변경 사유 <span class="required">필수</span></label><textarea id="aReason" rows="2"></textarea>`:""}
   <button class="btn" onclick="saveAcc('${id||""}')">저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
 }
@@ -1279,7 +1281,7 @@ async function saveAcc(id){
   const name=$("#aN").value.trim(); if(!name) return toast("이름을 입력하세요");
   const vehicles=[...document.querySelectorAll('input[name="aVehicle"]:checked')].map(el=>el.value);
   if(vehicles.length>MAX_ASSIGNED_VEHICLES) return toast(`지정 차량은 최대 ${MAX_ASSIGNED_VEHICLES}대입니다`);
-  const o={name,userId:($("#aI").value.trim()||name),dept:$("#aD").value.trim(),vehicle:vehicles[0]||"",vehicles};
+  const o={name,userId:($("#aI").value.trim()||name),dept:$("#aD").value.trim(),vehicle:vehicles[0]||"",vehicles,sharedVehicleAccess:$("#aSharedAccess").checked};
   if(!o.dept) return toast("부서를 입력하세요");
   const dup=ACCOUNTS.find(a=>a.userId===o.userId&&a.id!==id); if(dup) return toast("이미 존재하는 ID입니다");
   const before=id?ACCOUNTS.find(a=>a.id===id):null,reason=id?$("#aReason").value.trim():"신규 계정 등록";

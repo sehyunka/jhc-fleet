@@ -1,5 +1,5 @@
-const CACHE = 'jhc-fleet-command-v15';
-const ASSETS = ['./', './index.html', './manifest.json', './firebase-config.js', './icon-192.png', './icon-512.png', './logo-h.png', './fleet-login-bg.png'];
+const CACHE = 'jhc-fleet-command-v16';
+const ASSETS = ['./', './index.html', './book-format.js', './manifest.json', './firebase-config.js', './icon-192.png', './icon-512.png', './logo-h.png', './fleet-login-bg.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
