@@ -68,7 +68,7 @@ input[readonly]{background:#f1f4f6;color:#5c6a75}
 .activity-list,.alert-list{display:flex;flex-direction:column}.activity-row,.alert-row{display:grid;grid-template-columns:minmax(110px,1.1fr) minmax(78px,.75fr) minmax(88px,.8fr) minmax(110px,1fr);gap:12px;align-items:center;padding:13px 2px;border-bottom:1px solid #e6ebee;font-size:13px}.activity-row:last-child,.alert-row:last-child{border-bottom:0}.activity-row strong{color:var(--navy)}
 .alert-row{grid-template-columns:1fr auto}.alert-row .sub{margin-top:4px}
 .quick-action{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px;border-radius:14px;background:linear-gradient(135deg,var(--navy),var(--navy-2));color:#fff;margin-bottom:16px}.quick-action h2{color:#fff;margin:0 0 4px}.quick-action p{font-size:12px;color:#cbd9e5}.quick-action .btn{width:auto;margin:0;background:var(--teal);white-space:nowrap}
-.assignment-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:280px;overflow:auto;padding:10px;border:1px solid var(--bd);border-radius:12px;background:#f8fafb}.assignment-item{display:flex;align-items:flex-start;gap:8px;padding:9px;border:1px solid transparent;border-radius:10px;background:#fff;cursor:pointer}.assignment-item:has(input:checked){border-color:var(--teal);background:var(--teal-soft)}.assignment-item input{width:auto;margin:3px 0 0}.assignment-item strong{display:block;font-size:13px}.assignment-item small{display:block;color:var(--mut);font-size:11px;margin-top:2px}.assignment-count{display:flex;justify-content:space-between;align-items:center;margin:8px 0 6px;font-size:12px;color:var(--mut)}
+.assignment-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:340px;overflow:auto;padding:10px;border:1px solid var(--bd);border-radius:12px;background:#f8fafb}.assignment-item{display:flex;align-items:flex-start;gap:8px;padding:9px;border:1px solid transparent;border-radius:10px;background:#fff;cursor:pointer}.assignment-item:has(input:checked){border-color:var(--teal);background:var(--teal-soft)}.assignment-item input{width:auto;margin:3px 0 0}.assignment-item strong{display:block;font-size:13px}.assignment-item small{display:block;color:var(--mut);font-size:11px;margin-top:2px}.assignment-item.is-public{cursor:default;background:#f1f5f7}.assignment-item.is-public input{opacity:.55}.assignment-item[hidden]{display:none}.assignment-count{display:flex;justify-content:space-between;align-items:center;margin:8px 0 6px;font-size:12px;color:var(--mut)}.vehicle-search{margin:0 0 8px}.vehicle-assignment-status{display:inline-flex;margin-top:4px;font-size:10px;font-weight:800;color:#526776}.vehicle-assignment-status.transfer{color:#9a5b06}.vehicle-assignment-status.free{color:#14704f}.vehicle-result-count{font-size:11px;color:var(--mut);margin:-2px 0 7px}
 .status-pill,.tag{display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:10px;padding:4px 8px;border-radius:999px;font-weight:800;white-space:nowrap}
 .status-pill.ok,.tag.pub{background:#e3f4ed;color:#14704f}.status-pill.run{background:#dff6f4;color:#087b73}.status-pill.warn,.tag.off{background:#fff1df;color:#9a5b06}.status-pill.due{background:#fde8e9;color:#aa343a}.status-pill.unknown,.tag.prv{background:#edf1f3;color:#65737f}
 .fleet-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.fleet-card{padding:17px;border:1px solid var(--bd);border-radius:14px;background:#fff}.fleet-card-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.fleet-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px;padding-top:13px;border-top:1px solid #e8ecef}.fleet-meta span{display:block;font-size:10px;color:var(--mut);margin-bottom:2px}.fleet-meta strong{font-size:12px;color:#344553}
@@ -1252,43 +1252,105 @@ async function aAcc(){
   </tbody></table></div></div>`;
 }
 function accForm(id){
-  if(!isAdmin()) return toast("관리자만 차량 지정을 변경할 수 있습니다");
+  if(!isAdmin()) return toast("Google 로그인 관리자만 차량 지정을 변경할 수 있습니다");
   const a=id?ACCOUNTS.find(x=>x.id===id):{name:"",userId:"",dept:"",vehicle:"",vehicles:[],sharedVehicleAccess:false};
-  const current=new Set(accountVehiclePlates(a));
-  const assignedDedicated=new Set(ACCOUNTS.filter(x=>x.id!==id).flatMap(accountVehiclePlates));
-  const opts=VEHICLES.filter(v=>v.type!=="공용"&&(!assignedDedicated.has(v.plate)||current.has(v.plate)));
+  const current=new Set(accountVehiclePlates(a).filter(plate=>VEHICLES.find(v=>v.plate===plate)?.type!=="공용"));
+  const opts=VEHICLES.slice().sort((x,y)=>(x.type==="공용")-(y.type==="공용")||x.plate.localeCompare(y.plate,"ko",{numeric:true}));
+  const publicCount=opts.filter(v=>v.type==="공용").length;
   modal(`<h3>${id?"계정 수정 (부서이동·차량지정)":"계정 추가"}</h3>
+  <p class="sub">차량 지정 변경은 Google로 로그인한 관리자만 저장할 수 있으며 모든 변경은 변경 이력에 기록됩니다.</p>
   <label>이름</label><input id="aN" value="${esc(a.name)}">
   <label>ID</label><input id="aI" value="${esc(a.userId)}" placeholder="비우면 이름과 동일">
   ${id?"":`<label>초기 PW</label><input id="aP" value="${INITIAL_EMPLOYEE_PASSWORD}" placeholder="비우면 ${INITIAL_EMPLOYEE_PASSWORD}">`}
   <label>부서</label><input id="aD" value="${esc(a.dept)}" list="deptListA">
   <datalist id="deptListA">${[...new Set(ACCOUNTS.map(x=>x.dept).concat(Object.keys(SEED_ORG)))].map(d=>`<option value="${esc(d)}">`).join("")}</datalist>
-  <div class="assignment-count"><label style="margin:0">지정 차량</label><strong id="aVCount">${current.size}/${MAX_ASSIGNED_VEHICLES}대 선택</strong></div>
-  <div class="assignment-list">${opts.map(v=>`<label class="assignment-item"><input type="checkbox" name="aVehicle" value="${esc(v.plate)}" ${current.has(v.plate)?"checked":""} onchange="limitVehicleChecks(this)"><span><strong>${esc(v.plate)} · ${esc(v.model)}</strong><small>${esc(v.type)} · ${esc(v.dept)}${v.type==="공용"?" · 중복 지정 가능":""}</small></span></label>`).join("")}</div>
-  <p class="field-help">전용차량은 최대 ${MAX_ASSIGNED_VEHICLES}대까지 선택할 수 있으며 한 계정에만 지정됩니다. 공용차량은 아래 이용 권한으로 일괄 허용합니다.</p>
+  <div class="assignment-count"><label style="margin:0">차량 검색·지정</label><strong id="aVCount">${current.size}/${MAX_ASSIGNED_VEHICLES}대 선택</strong></div>
+  <input class="vehicle-search" id="aVehicleSearch" placeholder="차량번호·차종·부서·지정 사용자 검색" oninput="filterAccountVehicleOptions(this.value)">
+  <div class="vehicle-result-count" id="aVehicleResultCount">전체 ${opts.length}대 · 전용 ${opts.length-publicCount}대 · 공용 ${publicCount}대</div>
+  <div class="assignment-list" id="aVehicleList">${opts.map(v=>{
+    const owners=vehicleOwners(v.plate),otherOwners=owners.filter(owner=>owner.id!==id),ownerNames=owners.map(owner=>owner.name);
+    const search=[v.plate,v.model,v.type,v.dept,...ownerNames,ownerNames.length?"지정":"미지정"].join(" ").toLowerCase();
+    if(v.type==="공용") return `<label class="assignment-item is-public" data-vehicle-search="${esc(search)}"><input type="checkbox" disabled><span><strong>${esc(v.plate)} · ${esc(v.model)}</strong><small>${esc(v.type)} · ${esc(v.dept)}</small><span class="vehicle-assignment-status">공용차량 · 개별 지정 없음</span></span></label>`;
+    const status=ownerNames.length?`${ownerNames.join(", ")} 지정`:"미지정",statusClass=otherOwners.length?"transfer":ownerNames.length?"":"free";
+    return `<label class="assignment-item" data-vehicle-search="${esc(search)}"><input type="checkbox" name="aVehicle" value="${esc(v.plate)}" data-owner-ids="${esc(otherOwners.map(owner=>owner.id).join(","))}" data-owner-names="${esc(otherOwners.map(owner=>owner.name).join(", "))}" ${current.has(v.plate)?"checked":""} onchange="onAccountVehicleChange(this)"><span><strong>${esc(v.plate)} · ${esc(v.model)}</strong><small>${esc(v.type)} · ${esc(v.dept)}</small><span class="vehicle-assignment-status ${statusClass}">${esc(status)}</span></span></label>`;
+  }).join("")}</div>
+  <div class="banner warn" id="aTransferSummary" style="display:none;margin-top:8px"></div>
+  <p class="field-help">전용차량은 최대 ${MAX_ASSIGNED_VEHICLES}대까지 선택할 수 있습니다. 다른 사용자에게 지정된 차량을 선택하면 이전 확인 후 저장 시 기존 지정 해제와 신규 지정이 동시에 처리됩니다.</p>
   <label class="assignment-item" style="margin-top:12px"><input type="checkbox" id="aSharedAccess" ${canUseSharedVehicles(a)?"checked":""}><span><strong>공용차량 이용 권한</strong><small>허용 시 지정 전용차량과 모든 공용차량을 조회·운행할 수 있습니다.</small></span></label>
   ${id?`<label>변경 사유 <span class="required">필수</span></label><textarea id="aReason" rows="2"></textarea>`:""}
   <button class="btn" onclick="saveAcc('${id||""}')">저장</button><button class="btn sec" onclick="closeModal()">취소</button>`);
 }
+function filterAccountVehicleOptions(value){
+  const terms=String(value||"").trim().toLowerCase().split(/\s+/).filter(Boolean),items=[...document.querySelectorAll("#aVehicleList [data-vehicle-search]")];
+  let visible=0;
+  items.forEach(item=>{ const text=item.dataset.vehicleSearch||"",show=terms.every(term=>text.includes(term)); item.hidden=!show; if(show) visible++; });
+  const out=$("#aVehicleResultCount"); if(out) out.textContent=terms.length?`검색 결과 ${visible}대 / 전체 ${items.length}대`:`전체 ${items.length}대`;
+}
+function updateVehicleTransferSummary(){
+  const selected=[...document.querySelectorAll('input[name="aVehicle"]:checked[data-owner-ids]:not([data-owner-ids=""])')],out=$("#aTransferSummary");
+  if(!out) return;
+  if(!selected.length){ out.style.display="none"; out.textContent=""; return; }
+  out.style.display="block";
+  out.textContent=`저장 시 ${selected.map(el=>`${el.value} (${el.dataset.ownerNames} → ${$("#aN")?.value.trim()||"새 사용자"})`).join(", ")} 차량이 이전됩니다.`;
+}
+function onAccountVehicleChange(el){
+  if(!isAdmin()){ el.checked=false; toast("Google 로그인 관리자만 차량 지정을 변경할 수 있습니다"); return; }
+  if(!limitVehicleChecks(el)){ updateVehicleTransferSummary(); return; }
+  if(el.checked&&el.dataset.ownerIds){
+    const target=$("#aN")?.value.trim()||"선택한 사용자";
+    if(!confirm(`${el.value} 차량은 현재 ${el.dataset.ownerNames}에게 지정되어 있습니다.\n기존 지정을 해제하고 ${target}에게 이전하시겠습니까?`)){
+      el.checked=false; delete el.dataset.transferConfirmed; limitVehicleChecks(el); updateVehicleTransferSummary(); return;
+    }
+    el.dataset.transferConfirmed=el.dataset.ownerIds;
+  }
+  updateVehicleTransferSummary();
+}
 function limitVehicleChecks(el){
   const checked=[...document.querySelectorAll('input[name="aVehicle"]:checked')];
-  if(checked.length>MAX_ASSIGNED_VEHICLES){ el.checked=false; toast(`지정 차량은 최대 ${MAX_ASSIGNED_VEHICLES}대입니다`); }
+  if(checked.length>MAX_ASSIGNED_VEHICLES){ el.checked=false; toast(`지정 차량은 최대 ${MAX_ASSIGNED_VEHICLES}대입니다`); return false; }
   const count=document.querySelectorAll('input[name="aVehicle"]:checked').length, out=$("#aVCount");
   if(out) out.textContent=`${count}/${MAX_ASSIGNED_VEHICLES}대 선택`;
+  return true;
 }
 async function saveAcc(id){
-  if(!isAdmin()) return toast("관리자만 계정과 차량 지정을 저장할 수 있습니다");
+  if(!isAdmin()) return toast("Google 로그인 관리자만 계정과 차량 지정을 저장할 수 있습니다");
   const name=$("#aN").value.trim(); if(!name) return toast("이름을 입력하세요");
   const vehicles=[...document.querySelectorAll('input[name="aVehicle"]:checked')].map(el=>el.value);
   if(vehicles.length>MAX_ASSIGNED_VEHICLES) return toast(`지정 차량은 최대 ${MAX_ASSIGNED_VEHICLES}대입니다`);
+  if(vehicles.some(plate=>VEHICLES.find(v=>v.plate===plate)?.type==="공용")) return toast("공용차량은 개별 지정할 수 없습니다");
   const o={name,userId:($("#aI").value.trim()||name),dept:$("#aD").value.trim(),vehicle:vehicles[0]||"",vehicles,sharedVehicleAccess:$("#aSharedAccess").checked};
   if(!o.dept) return toast("부서를 입력하세요");
-  const dup=ACCOUNTS.find(a=>a.userId===o.userId&&a.id!==id); if(dup) return toast("이미 존재하는 ID입니다");
-  const before=id?ACCOUNTS.find(a=>a.id===id):null,reason=id?$("#aReason").value.trim():"신규 계정 등록";
+  const liveAccounts=await dbAll("accounts"),dup=liveAccounts.find(a=>a.userId===o.userId&&a.id!==id); if(dup) return toast("이미 존재하는 ID입니다");
+  const before=id?liveAccounts.find(a=>a.id===id):null,reason=id?$("#aReason").value.trim():"신규 계정 등록";
+  if(id&&!before) return toast("계정을 찾을 수 없습니다");
   if(id&&!reason) return toast("변경 사유를 입력하세요");
   if(!id){ o.pw=($("#aP").value||INITIAL_EMPLOYEE_PASSWORD); o.pwCaseInsensitive=false; o.passwordStatus="initial"; o.initialPasswordVersion=2; }
-  await auditedMutation({operation:id?"update":"create",collection:"accounts",id:id||undefined,before,after:o,reason,label:name});
-  closeModal(); toast("저장됨"); nav("admin");
+  const ownerUpdates=liveAccounts.filter(owner=>owner.id!==id&&accountVehiclePlates(owner).some(plate=>vehicles.includes(plate))).map(owner=>{
+    const moved=accountVehiclePlates(owner).filter(plate=>vehicles.includes(plate)),remaining=accountVehiclePlates(owner).filter(plate=>!vehicles.includes(plate));
+    return {owner,moved,patch:{vehicle:remaining[0]||"",vehicles:remaining}};
+  });
+  const unconfirmed=ownerUpdates.flatMap(x=>x.moved).filter(plate=>{
+    const input=[...document.querySelectorAll('input[name="aVehicle"]:checked')].find(el=>el.value===plate);
+    const liveOwnerIds=ownerUpdates.filter(x=>x.moved.includes(plate)).map(x=>x.owner.id).sort().join(",");
+    return !input||String(input.dataset.transferConfirmed||"").split(",").filter(Boolean).sort().join(",")!==liveOwnerIds;
+  });
+  if(unconfirmed.length&&!confirm(`${unconfirmed.join(", ")} 차량의 기존 지정 정보가 변경되었습니다. 현재 기존 지정을 해제하고 ${name}에게 이전하시겠습니까?`)) return;
+  if(useFB){
+    const targetRef=id?fdb.collection("accounts").doc(id):fdb.collection("accounts").doc(),batch=fdb.batch();
+    if(id) batch.set(targetRef,o,{merge:true}); else batch.set(targetRef,o);
+    for(const item of ownerUpdates){
+      batch.set(fdb.collection("accounts").doc(item.owner.id),item.patch,{merge:true});
+      const ownerAfter={...item.owner,...item.patch},logRef=fdb.collection("auditLogs").doc(),transferReason=`${reason} · ${item.moved.join(", ")} 차량을 ${name}에게 이전`;
+      batch.set(logRef,{...auditRecord({operation:"update",collection:"accounts",targetId:item.owner.id,label:item.owner.name,before:item.owner,after:ownerAfter,reason:transferReason}),serverAt:firebase.firestore.FieldValue.serverTimestamp()});
+    }
+    const targetAfter=id?{...before,...o}:o,targetLogRef=fdb.collection("auditLogs").doc();
+    batch.set(targetLogRef,{...auditRecord({operation:id?"update":"create",collection:"accounts",targetId:targetRef.id,label:name,before,after:targetAfter,reason}),serverAt:firebase.firestore.FieldValue.serverTimestamp()});
+    await batch.commit();
+  }else{
+    for(const item of ownerUpdates) await auditedMutation({operation:"update",collection:"accounts",id:item.owner.id,before:item.owner,after:item.patch,reason:`${reason} · ${item.moved.join(", ")} 차량을 ${name}에게 이전`,label:item.owner.name});
+    await auditedMutation({operation:id?"update":"create",collection:"accounts",id:id||undefined,before,after:o,reason,label:name});
+  }
+  await loadCore(); closeModal(); toast(ownerUpdates.length?"차량 이전 및 계정 저장 완료":"저장됨"); nav("admin");
 }
 function resetPwForm(id){
   const a=ACCOUNTS.find(x=>x.id===id); if(!a) return toast("계정을 찾을 수 없습니다");
