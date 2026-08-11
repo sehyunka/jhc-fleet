@@ -11,7 +11,7 @@ const BOOK_BIZNO = "125-81-50325";    // 사업자등록번호
 
 /* 서식(테두리·병합) 지원 엑셀 라이브러리 로드 (xlsx-js-style, 기존 XLSX와 API 동일) */
 let __XLSXS = null;
-let __JSZIP = null;
+let __EXCELJS = null;
 function loadXlsxStyle(){
   return new Promise(function(res, rej){
     if(typeof window !== "undefined" && window.__TEST_XLSX){ __XLSXS = window.__TEST_XLSX; return res(__XLSXS); }
@@ -23,15 +23,15 @@ function loadXlsxStyle(){
     document.head.appendChild(s);
   });
 }
-function loadJsZip(){
+function loadExcelJs(){
   return new Promise(function(res, rej){
-    if(typeof window !== "undefined" && window.__TEST_JSZIP){ __JSZIP = window.__TEST_JSZIP; return res(__JSZIP); }
-    if(__JSZIP) return res(__JSZIP);
-    if(typeof window !== "undefined" && window.JSZip){ __JSZIP = window.JSZip; return res(__JSZIP); }
-    var s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
-    s.onload = function(){ __JSZIP = window.JSZip; res(__JSZIP); };
-    s.onerror = function(){ rej(new Error("JSZip 로드 실패")); };
+    if(typeof window !== "undefined" && window.__TEST_EXCELJS){ __EXCELJS=window.__TEST_EXCELJS; return res(__EXCELJS); }
+    if(__EXCELJS) return res(__EXCELJS);
+    if(typeof window !== "undefined" && window.ExcelJS){ __EXCELJS=window.ExcelJS; return res(__EXCELJS); }
+    var s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js";
+    s.onload=function(){ __EXCELJS=window.ExcelJS; res(__EXCELJS); };
+    s.onerror=function(){ rej(new Error("ExcelJS 로드 실패")); };
     document.head.appendChild(s);
   });
 }
@@ -173,53 +173,74 @@ function makeBookSheet(X, v, rows, from, to){
   return ws;
 }
 
-function bookXmlEscape(value){
-  return String(value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-function injectBookSheetPrintLayout(xml){
-  if(!/<pageSetUpPr\b/.test(xml)){
-    if(/<sheetPr\b[^>]*\/>/.test(xml)) xml=xml.replace(/<sheetPr\b([^>]*)\/>/,"<sheetPr$1><pageSetUpPr fitToPage=\"1\" autoPageBreaks=\"0\"/></sheetPr>");
-    else if(/<sheetPr\b[^>]*>/.test(xml)) xml=xml.replace(/<\/sheetPr>/,"<pageSetUpPr fitToPage=\"1\" autoPageBreaks=\"0\"/></sheetPr>");
-    else xml=xml.replace(/(<worksheet\b[^>]*>)/,"$1<sheetPr><pageSetUpPr fitToPage=\"1\" autoPageBreaks=\"0\"/></sheetPr>");
-  }
-  xml=xml.replace(/<printOptions\b[^>]*\/>/g,"").replace(/<pageMargins\b[^>]*\/>/g,"").replace(/<pageSetup\b[^>]*\/>/g,"");
-  var printXml='<printOptions horizontalCentered="1" verticalCentered="0" gridLines="0" headings="0"/>'+
-    '<pageMargins left="0.2" right="0.2" top="0.35" bottom="0.35" header="0.15" footer="0.15"/>'+
-    '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0" blackAndWhite="0" draft="0" horizontalDpi="300" verticalDpi="300"/>';
-  var marker=/<(?:headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|<\/worksheet>/;
-  return xml.replace(marker,function(found){ return printXml+found; });
-}
-function injectBookDefinedNames(xml,wb,X){
-  var defs=wb.SheetNames.map(function(name,index){
-    var ws=wb.Sheets[name], end=X.utils.decode_range(ws["!ref"]).e.r+1;
-    var safe="'"+name.replace(/'/g,"''")+"'";
-    return '<definedName name="_xlnm.Print_Area" localSheetId="'+index+'">'+bookXmlEscape(safe+'!$A$1:$I$'+end)+'</definedName>'+
-      '<definedName name="_xlnm.Print_Titles" localSheetId="'+index+'">'+bookXmlEscape(safe+'!$10:$11')+'</definedName>';
-  }).join("");
-  if(/<definedNames>/.test(xml)) return xml.replace("</definedNames>",defs+"</definedNames>");
-  return xml.replace(/(<calcPr\b|<\/workbook>)/,"<definedNames>"+defs+"</definedNames>$1");
-}
-function saveBookBlob(blob,fileName){
+function saveBookArray(data,fileName){
+  var blob=new Blob([data],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
   var a=document.createElement("a"),url=URL.createObjectURL(blob);
   a.href=url; a.download=fileName; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ URL.revokeObjectURL(url); },30000);
 }
-async function writeBookA4(X,wb,fileName){
-  try{
-    var Z=await loadJsZip(), data=X.write(wb,{bookType:"xlsx",type:"array"}), zip=await Z.loadAsync(data);
-    var sheetPaths=Object.keys(zip.files).filter(function(path){ return /^xl\/worksheets\/sheet\d+\.xml$/.test(path); });
-    await Promise.all(sheetPaths.map(async function(path){
-      var xml=await zip.file(path).async("string");
-      zip.file(path,injectBookSheetPrintLayout(xml));
-    }));
-    var workbookXml=await zip.file("xl/workbook.xml").async("string");
-    zip.file("xl/workbook.xml",injectBookDefinedNames(workbookXml,wb,X));
-    saveBookBlob(await zip.generateAsync({type:"blob",compression:"DEFLATE"}),fileName);
-  }catch(e){
-    console.warn("A4 인쇄 설정 적용 실패",e);
-    toast("A4 인쇄 설정 적용 실패 — 기본 엑셀 형식으로 생성합니다");
-    X.writeFile(wb,fileName);
+function bookArgb(color){
+  var rgb=color&&color.rgb?String(color.rgb).replace(/^#/,"").toUpperCase():"";
+  if(!rgb) return undefined;
+  return {argb:(rgb.length===6?"FF":"")+rgb};
+}
+function bookExcelJsBorder(edge){
+  if(!edge) return undefined;
+  var out={style:edge.style||"thin"}, color=bookArgb(edge.color);
+  if(color) out.color=color;
+  return out;
+}
+function bookExcelJsStyle(style){
+  if(!style) return {};
+  var out={};
+  if(style.font){
+    out.font={name:style.font.name||"맑은 고딕",size:style.font.sz||9,bold:!!style.font.bold,italic:!!style.font.italic,underline:!!style.font.underline};
+    var fontColor=bookArgb(style.font.color); if(fontColor) out.font.color=fontColor;
   }
+  if(style.alignment) out.alignment={
+    horizontal:style.alignment.horizontal,
+    vertical:style.alignment.vertical,
+    wrapText:!!style.alignment.wrapText,
+    textRotation:style.alignment.textRotation
+  };
+  if(style.border) out.border={
+    top:bookExcelJsBorder(style.border.top),bottom:bookExcelJsBorder(style.border.bottom),
+    left:bookExcelJsBorder(style.border.left),right:bookExcelJsBorder(style.border.right)
+  };
+  if(style.fill){
+    out.fill={type:"pattern",pattern:style.fill.patternType||"solid"};
+    var fillColor=bookArgb(style.fill.fgColor); if(fillColor) out.fill.fgColor=fillColor;
+  }
+  if(style.numFmt) out.numFmt=style.numFmt;
+  return out;
+}
+function convertBookToExcel2007(X,ExcelJS,sourceBook){
+  var target=new ExcelJS.Workbook();
+  target.creator=BOOK_CORP; target.company=BOOK_CORP; target.created=new Date();
+  sourceBook.SheetNames.forEach(function(name){
+    var source=sourceBook.Sheets[name], range=X.utils.decode_range(source["!ref"]);
+    var sheet=target.addWorksheet(name,{properties:{defaultRowHeight:15}});
+    for(var r=range.s.r;r<=range.e.r;r++) for(var c=range.s.c;c<=range.e.c;c++){
+      var address=X.utils.encode_cell({r:r,c:c}), sourceCell=source[address];
+      if(!sourceCell) continue;
+      var cell=sheet.getCell(r+1,c+1); cell.value=sourceCell.v; cell.style=bookExcelJsStyle(sourceCell.s);
+    }
+    (source["!merges"]||[]).forEach(function(m){ sheet.mergeCells(m.s.r+1,m.s.c+1,m.e.r+1,m.e.c+1); });
+    (source["!cols"]||[]).forEach(function(col,index){ sheet.getColumn(index+1).width=col.wch||col.width||10; });
+    (source["!rows"]||[]).forEach(function(row,index){ if(row&&row.hpx) sheet.getRow(index+1).height=+(row.hpx*0.75).toFixed(2); });
+    sheet.views=[{showGridLines:false}];
+    sheet.pageSetup={
+      paperSize:9,orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,
+      horizontalCentered:true,verticalCentered:false,
+      margins:{left:0.2,right:0.2,top:0.35,bottom:0.35,header:0.15,footer:0.15},
+      printArea:"A1:I"+(range.e.r+1),printTitlesRow:"10:11"
+    };
+  });
+  return target;
+}
+async function writeBookExcel2007(X,wb,fileName){
+  var ExcelJS=await loadExcelJs(), target=convertBookToExcel2007(X,ExcelJS,wb);
+  saveBookArray(await target.xlsx.writeBuffer(),fileName);
 }
 
 /* ── 기존 [엑셀 생성] 버튼(dlBook)을 별지 서식 버전으로 대체 ── */
@@ -241,5 +262,6 @@ async function dlBook(){
     made++;
   }
   if(!made) return toast("해당 기간 완료된 운행기록이 없습니다");
-  await writeBookA4(X,wb,"운행기록부_" + from.replace(/-/g,"") + "-" + to.replace(/-/g,"") + ".xlsx");
+  try{ await writeBookExcel2007(X,wb,"운행기록부_" + from.replace(/-/g,"") + "-" + to.replace(/-/g,"") + ".xlsx"); }
+  catch(e){ console.error("Excel 2007 파일 생성 실패",e); toast("엑셀 파일 생성에 실패했습니다. 잠시 후 다시 시도해주세요."); }
 }
