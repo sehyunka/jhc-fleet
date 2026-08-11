@@ -164,7 +164,7 @@ const SEED_ORG={
 "전산실":["장이현"],
 "관리부":["지석근"],
 "물류팀":["김형근","조재훈","문정환","이재인","임희춘","문영환","박성진"],
-"구매팀":["이재일","신용희"],
+"구매부":["이재일","신용희"],
 "유리사업부":["김대중","김형식","이성우","우정남"],
 "영업지원팀":["장용남","김명진","이학영","이종미","윤승재","백선아","장윤천"],
 "재경팀":["김애경","나미정"],
@@ -180,6 +180,10 @@ const SEED_ORG={
 };
 /* 개인별 전용차량 지정 (현황 엑셀 기준 · 총무부 관리자 페이지에서 변경 가능) */
 const SEED_VMAP={"가세현":"19노8679","유제동":"810로7971","장정훈":"811구7817","김유찬":"311수5686","이석현":"383무5247","김영신":"228루8048","지상근":"231누5261","윤제현":"87더0991","김대근":"83조8150","전상국":"83조3874","유인상":"87더0462","문영환":"89오0759","정근영":"289구8972","구현수":"123가8358","손만제":"163서5541","이정수":"366러6790","유종성":"195하2090","유승엽":"195하6441","박철휘":"195하8557","진소우":"196하2581","조성민":"196호8904","박기범":"196호8905","오신교":"196호8906","김규섭":"177호7301","김도원":"189호1131","조강연":"189호1132"};
+const REQUIRED_ACCOUNTS=[
+  {name:"이재일",dept:"구매부",title:"부장",sharedVehicleAccess:true},
+  {name:"신용희",dept:"구매부",title:"차장",sharedVehicleAccess:true}
+];
 const HOLIDAYS=["2026-01-01","2026-02-16","2026-02-17","2026-02-18","2026-03-01","2026-03-02","2026-05-05","2026-05-24","2026-05-25","2026-06-06","2026-08-15","2026-08-17","2026-09-24","2026-09-25","2026-09-26","2026-10-03","2026-10-05","2026-10-09","2026-12-25","2027-01-01","2027-02-06","2027-02-07","2027-02-08","2027-02-09","2027-03-01","2027-05-05","2027-05-13","2027-06-06","2027-08-15","2027-08-16","2027-09-14","2027-09-15","2027-09-16","2027-10-03","2027-10-04","2027-10-09","2027-10-11","2027-12-25"];
 const MAINT_ITEMS=[
 {name:"엔진오일",km:10000,mo:12},{name:"브레이크오일",km:40000,mo:24},{name:"브레이크패드",km:30000,mo:0},
@@ -243,11 +247,34 @@ async function ensureSeed(){
     }
     for(const v of SEED_VEHICLES) await dbAdd("vehicles",{...v,active:true});
     for(const dept of Object.keys(SEED_ORG)) for(const name of SEED_ORG[dept])
-      await dbAdd("accounts",{name,dept,userId:name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:SEED_VMAP[name]||"",sharedVehicleAccess:name==="가세현"});
+      await dbAdd("accounts",{name,dept,userId:name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:SEED_VMAP[name]||"",sharedVehicleAccess:["가세현","이재일","신용희"].includes(name)});
     st=Object.assign({extraHolidays:"",seedV:2},st||{});
     st.seedV=2; await saveSettings(st);
   }
   SETTINGS=st;
+}
+async function ensureRequiredAccounts(){
+  if(!useFB||!fauth?.currentUser||!isAdmin()) return 0;
+  const current=await dbAll("accounts");
+  let changed=0;
+  for(const required of REQUIRED_ACCOUNTS){
+    const existing=current.find(a=>a.name===required.name||a.userId===required.name);
+    if(!existing){
+      const account={name:required.name,dept:required.dept,title:required.title,userId:required.name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:"",vehicles:[],sharedVehicleAccess:true};
+      await auditedMutation({operation:"create",collection:"accounts",before:null,after:account,reason:"전체 조직도 누락 계정 보정 · 공용차량 이용 권한 부여",label:required.name});
+      current.push(account); changed++;
+    }else{
+      const patch={};
+      if(existing.dept!==required.dept) patch.dept=required.dept;
+      if(existing.title!==required.title) patch.title=required.title;
+      if(existing.sharedVehicleAccess!==true) patch.sharedVehicleAccess=true;
+      if(Object.keys(patch).length){
+        await auditedMutation({operation:"update",collection:"accounts",id:existing.id,before:existing,after:patch,reason:"전체 조직도 구매부 정보 보정 · 공용차량 이용 권한 부여",label:required.name});
+        Object.assign(existing,patch); changed++;
+      }
+    }
+  }
+  return changed;
 }
 async function loadCore(){
   VEHICLES=(await dbAll("vehicles")).filter(v=>v.active!==false).sort((a,b)=>(a.dept||"").localeCompare(b.dept||"")||a.plate.localeCompare(b.plate));
@@ -484,9 +511,10 @@ async function requestAdminGoogleLogin(){
     provider.setCustomParameters({prompt:"select_account"});
     const result=await fauth.signInWithPopup(provider),profile=await adminProfileForUser(result.user);
     if(!profile){ await fauth.signOut(); return toast("관리자로 등록되지 않은 Google 계정입니다"); }
-    await ensureSeed(); await loadCore();
+    SESSION=createAdminSession(result.user,profile);
+    await ensureSeed(); await loadCore(); await ensureRequiredAccounts(); await loadCore();
     seenNotices.clear(); aTab="status"; fleetStatusFilter="running";
-    SESSION=createAdminSession(result.user,profile); saveSession();
+    saveSession();
     try{ await cleanupLegacyAdminCredentials(); }catch(e){ console.warn("기존 관리자 인증정보 정리 실패",e); }
     await enterApp(true);
   }catch(e){
@@ -683,6 +711,7 @@ function vehicleOperationalState(v,trips,recs){
   if(maint.level==="unknown") return {level:"unknown",label:"점검 이력 없음",running:null,maint};
   return {level:"ok",label:"운행 가능",running:null,maint};
 }
+function isVehicleAvailableState(state){ return state.level==="ok"||state.level==="unknown"; }
 function statusBadge(state){ return `<span class="status-pill ${state.level}">${esc(state.label)}</span>`; }
 
 /* ═══════════ 홈 대시보드 ═══════════ */
@@ -843,8 +872,8 @@ async function vVehicles(){
   const scope=visibleVehicles(), trips=await dbAll("trips"), recs=await dbAll("maintenance");
   const rows=scope.map(v=>{const vt=trips.filter(t=>t.vehicle===v.plate),owners=vehicleOwnerNames(v.plate);return {v,vt,owners,state:vehicleOperationalState(v,trips,recs),km:lastKm(vt)};});
   const q=vehicleQuery.toLowerCase();
-  const filtered=rows.filter(x=>(!q||[x.v.plate,x.v.model,x.v.dept,x.owners].some(s=>String(s||"").toLowerCase().includes(q)))&&(vehicleStatusFilter==="all"||x.state.level===vehicleStatusFilter||(vehicleStatusFilter==="attention"&&(x.state.level==="due"||x.state.level==="warn"))));
-  const available=rows.filter(x=>x.state.level==="ok"||x.state.level==="unknown").length, running=rows.filter(x=>x.state.level==="run").length, attention=rows.filter(x=>x.state.level==="due"||x.state.level==="warn").length;
+  const filtered=rows.filter(x=>(!q||[x.v.plate,x.v.model,x.v.dept,x.owners].some(s=>String(s||"").toLowerCase().includes(q)))&&(vehicleStatusFilter==="all"||(vehicleStatusFilter==="ok"&&isVehicleAvailableState(x.state))||x.state.level===vehicleStatusFilter||(vehicleStatusFilter==="attention"&&(x.state.level==="due"||x.state.level==="warn"))));
+  const available=rows.filter(x=>isVehicleAvailableState(x.state)).length, running=rows.filter(x=>x.state.level==="run").length, attention=rows.filter(x=>x.state.level==="due"||x.state.level==="warn").length;
   $("#app").innerHTML=`
   <div class="metrics-grid"><div class="metric-card"><div class="metric-label">${isAdmin()?"등록 차량":"조회 가능 차량"}</div><div class="metric-value">${rows.length}<small>대</small></div><div class="metric-note">현재 계정 권한 기준</div></div><div class="metric-card"><div class="metric-label">운행 가능</div><div class="metric-value">${available}<small>대</small></div><div class="metric-note">운행 중 기록 없음</div></div><div class="metric-card active"><div class="metric-label">운행 중</div><div class="metric-value">${running}<small>대</small></div><div class="metric-note">미종료 기록 기준</div></div><div class="metric-card ${attention?"alert":""}"><div class="metric-label">정비 확인</div><div class="metric-value">${attention}<small>대</small></div><div class="metric-note">실제 교체 이력 기준</div></div></div>
   <section class="panel"><div class="panel-head"><div><h2>차량 검색</h2><p class="sub">차량번호, 차종, 부서 또는 지정 운전자로 검색합니다.</p></div>${isAdmin()?`<button class="btn sm" onclick="aTab='veh';nav('admin')">차량 추가·수정</button>`:""}</div>
@@ -1614,6 +1643,7 @@ async function waitForAuthReady(){
   await waitForAuthReady();
   if(SESSION?.role==="admin"){
     if(await restoreAdminSession()){
+      try{ await ensureRequiredAccounts(); await loadCore(); }catch(e){ console.warn("필수 사용자 계정 보정 실패",e); }
       try{ await cleanupLegacyAdminCredentials(); }catch(e){ console.warn("기존 관리자 인증정보 정리 실패",e); }
       enterApp(true);
     }else{
