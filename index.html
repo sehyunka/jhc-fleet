@@ -211,20 +211,31 @@ const LS={
   set(k,v){ localStorage.setItem("jhc2_"+k,JSON.stringify(v)) }
 };
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const DATA_CACHE=new Map();
+const DATA_CACHE_TTL={vehicles:60000,accounts:60000,trips:4000,maintenance:30000,notices:30000,adminAccess:60000,auditLogs:4000};
+function invalidateDataCache(...cols){ for(const col of cols) DATA_CACHE.delete(col); }
 async function dbAll(col){
-  if(useFB){ const s=await fdb.collection(col).get(); return s.docs.map(d=>({id:d.id,...d.data()})); }
+  if(useFB){
+    const now=Date.now(),cached=DATA_CACHE.get(col),ttl=DATA_CACHE_TTL[col]??10000;
+    if(cached?.data&&now-cached.at<ttl) return cached.data;
+    if(cached?.pending) return cached.pending;
+    const pending=fdb.collection(col).get().then(s=>{
+      const data=s.docs.map(d=>({id:d.id,...d.data()})); DATA_CACHE.set(col,{data,at:Date.now()}); return data;
+    }).catch(e=>{ DATA_CACHE.delete(col); throw e; });
+    DATA_CACHE.set(col,{pending,at:now}); return pending;
+  }
   return LS.get(col);
 }
 async function dbAdd(col,obj){
-  if(useFB){ const r=await fdb.collection(col).add(obj); return r.id; }
+  if(useFB){ const r=await fdb.collection(col).add(obj); invalidateDataCache(col); return r.id; }
   obj.id=uid(); const a=LS.get(col); a.push(obj); LS.set(col,a); return obj.id;
 }
 async function dbUpd(col,id,patch){
-  if(useFB){ await fdb.collection(col).doc(id).set(patch,{merge:true}); return; }
+  if(useFB){ await fdb.collection(col).doc(id).set(patch,{merge:true}); invalidateDataCache(col); return; }
   const a=LS.get(col); const i=a.findIndex(x=>x.id===id); if(i>-1){Object.assign(a[i],patch);LS.set(col,a);}
 }
 async function dbDel(col,id){
-  if(useFB){ await fdb.collection(col).doc(id).delete(); return; }
+  if(useFB){ await fdb.collection(col).doc(id).delete(); invalidateDataCache(col); return; }
   LS.set(col,LS.get(col).filter(x=>x.id!==id));
 }
 async function getSettings(){
@@ -232,12 +243,12 @@ async function getSettings(){
   const a=LS.get("settings"); return a.length?a[0]:null;
 }
 async function saveSettings(s){
-  if(useFB){ await fdb.collection("settings").doc("main").set(s,{merge:true}); return; }
+  if(useFB){ await fdb.collection("settings").doc("main").set(s,{merge:true}); CORE_LOADED_AT=0; return; }
   const cur=(LS.get("settings")[0])||{}; LS.set("settings",[Object.assign(cur,s)]);
 }
 
 /* ═══════════ 시드 & 캐시 ═══════════ */
-let VEHICLES=[],ACCOUNTS=[],SETTINGS={};
+let VEHICLES=[],ACCOUNTS=[],SETTINGS={},CORE_LOADED_AT=0;
 async function ensureSeed(){
   let st=await getSettings();
   if(!st||st.seedV!==2){
@@ -276,10 +287,12 @@ async function ensureRequiredAccounts(){
   }
   return changed;
 }
-async function loadCore(){
-  VEHICLES=(await dbAll("vehicles")).filter(v=>v.active!==false).sort((a,b)=>(a.dept||"").localeCompare(b.dept||"")||a.plate.localeCompare(b.plate));
-  ACCOUNTS=(await dbAll("accounts")).sort((a,b)=>a.dept.localeCompare(b.dept)||a.name.localeCompare(b.name));
-  SETTINGS=(await getSettings())||SETTINGS;
+async function loadCore(force=false){
+  if(!force&&VEHICLES.length&&ACCOUNTS.length&&Date.now()-CORE_LOADED_AT<60000) return;
+  const [vehicles,accounts,settings]=await Promise.all([dbAll("vehicles"),dbAll("accounts"),getSettings()]);
+  VEHICLES=vehicles.filter(v=>v.active!==false).sort((a,b)=>(a.dept||"").localeCompare(b.dept||"")||a.plate.localeCompare(b.plate));
+  ACCOUNTS=accounts.sort((a,b)=>a.dept.localeCompare(b.dept)||a.name.localeCompare(b.name));
+  SETTINGS=settings||SETTINGS; CORE_LOADED_AT=Date.now();
 }
 
 /* ═══════════ 유틸 ═══════════ */
@@ -411,6 +424,8 @@ async function auditedMutation({operation,collection,id,before,after,reason,labe
     else throw new Error("지원하지 않는 변경 작업입니다");
     batch.set(logRef,{...auditRecord({operation,collection,targetId,label,before,after:recordedAfter,reason:why}),serverAt:firebase.firestore.FieldValue.serverTimestamp()});
     await batch.commit();
+    invalidateDataCache(collection,"auditLogs");
+    if(collection==="vehicles"||collection==="accounts"||collection==="settings") CORE_LOADED_AT=0;
     return targetId;
   }
   if(collection==="settings"&&id==="main") await saveSettings(after);
@@ -630,20 +645,23 @@ function syncSessionAccount(){
 }
 
 /* ═══════════ 라우팅 ═══════════ */
-let VIEW="home";
+let VIEW="home",NAV_SEQUENCE=0;
 async function nav(v){
   if(!SESSION) return renderLogin();
+  const sequence=++NAV_SEQUENCE;
   const requestedV=v==="shared"?"drive":v;
   const activeV=isAdmin()&&requestedV==="drive"?"home":requestedV;
   VIEW=activeV; updateShellMeta(activeV);
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("act",b.dataset.v===activeV));
-  $("#app").innerHTML="<div class='card'><div class='empty-state'>데이터를 불러오는 중입니다…</div></div>";
+  const loadingTimer=setTimeout(()=>{if(sequence===NAV_SEQUENCE) $("#app").innerHTML="<div class='card'><div class='empty-state'>데이터를 불러오는 중입니다…</div></div>";},180);
   try{
     await loadCore();
+    if(sequence!==NAV_SEQUENCE) return;
     if(!syncSessionAccount()) return;
     await ({home:vHome,drive:vDrive,shared:vDrive,vehicles:vVehicles,maint:vMaint,history:vHistory,admin:vAdmin,my:vMy})[activeV]();
   }
   catch(e){ $("#app").innerHTML=`<div class='banner warn'>오류: ${esc(e.message)}</div>`; }
+  finally{ clearTimeout(loadingTimer); }
 }
 function offBanner(){ return isOffday(todayStr())?`<div class="banner warn">⚠️ 오늘은 휴무일(토·일·공휴일)입니다.<br>법인차량 운행은 사전 승인된 경우만 가능합니다.</div>`:""; }
 function personSelectors(selDept,selName,publicOnly=false){
@@ -869,18 +887,18 @@ function applyVehicleFilters(){
 }
 function resetVehicleFilters(){ vehicleQuery=""; vehicleStatusFilter="all"; nav("vehicles"); }
 async function vVehicles(){
-  const scope=visibleVehicles(), trips=await dbAll("trips"), recs=await dbAll("maintenance");
-  const rows=scope.map(v=>{const vt=trips.filter(t=>t.vehicle===v.plate),owners=vehicleOwnerNames(v.plate);return {v,vt,owners,state:vehicleOperationalState(v,trips,recs),km:lastKm(vt)};});
+  const scope=visibleVehicles(),[trips,recs]=await Promise.all([dbAll("trips"),dbAll("maintenance")]);
+  const rows=scope.map(v=>{const vt=trips.filter(t=>t.vehicle===v.plate),owners=vehicleOwnerNames(v.plate),maintenance=recs.filter(r=>r.vehicle===v.plate).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));return {v,vt,owners,maintenance,latestMaintenance:maintenance[0]||null,state:vehicleOperationalState(v,trips,recs),km:lastKm(vt)};});
   const q=vehicleQuery.toLowerCase();
-  const filtered=rows.filter(x=>(!q||[x.v.plate,x.v.model,x.v.dept,x.owners].some(s=>String(s||"").toLowerCase().includes(q)))&&(vehicleStatusFilter==="all"||(vehicleStatusFilter==="ok"&&isVehicleAvailableState(x.state))||x.state.level===vehicleStatusFilter||(vehicleStatusFilter==="attention"&&(x.state.level==="due"||x.state.level==="warn"))));
-  const available=rows.filter(x=>isVehicleAvailableState(x.state)).length, running=rows.filter(x=>x.state.level==="run").length, attention=rows.filter(x=>x.state.level==="due"||x.state.level==="warn").length;
+  const filtered=rows.filter(x=>(!q||[x.v.plate,x.v.model,x.v.dept,x.owners,x.latestMaintenance?.item,x.latestMaintenance?.shop].some(s=>String(s||"").toLowerCase().includes(q)))&&(vehicleStatusFilter==="all"||(vehicleStatusFilter==="ok"&&isVehicleAvailableState(x.state))||(vehicleStatusFilter==="maintenance"&&x.maintenance.length>0)||x.state.level===vehicleStatusFilter||(vehicleStatusFilter==="attention"&&(x.state.level==="due"||x.state.level==="warn"))));
+  const available=rows.filter(x=>isVehicleAvailableState(x.state)).length, running=rows.filter(x=>x.state.level==="run").length, maintenanceCount=rows.filter(x=>x.maintenance.length>0).length;
   $("#app").innerHTML=`
-  <div class="metrics-grid"><div class="metric-card"><div class="metric-label">${isAdmin()?"등록 차량":"조회 가능 차량"}</div><div class="metric-value">${rows.length}<small>대</small></div><div class="metric-note">현재 계정 권한 기준</div></div><div class="metric-card"><div class="metric-label">운행 가능</div><div class="metric-value">${available}<small>대</small></div><div class="metric-note">운행 중 기록 없음</div></div><div class="metric-card active"><div class="metric-label">운행 중</div><div class="metric-value">${running}<small>대</small></div><div class="metric-note">미종료 기록 기준</div></div><div class="metric-card ${attention?"alert":""}"><div class="metric-label">정비 확인</div><div class="metric-value">${attention}<small>대</small></div><div class="metric-note">실제 교체 이력 기준</div></div></div>
+  <div class="metrics-grid"><div class="metric-card"><div class="metric-label">${isAdmin()?"등록 차량":"조회 가능 차량"}</div><div class="metric-value">${rows.length}<small>대</small></div><div class="metric-note">현재 계정 권한 기준</div></div><div class="metric-card"><div class="metric-label">운행 가능</div><div class="metric-value">${available}<small>대</small></div><div class="metric-note">운행 중 기록 없음</div></div><div class="metric-card active"><div class="metric-label">운행 중</div><div class="metric-value">${running}<small>대</small></div><div class="metric-note">미종료 기록 기준</div></div><div class="metric-card"><div class="metric-label">정비 이력 차량</div><div class="metric-value">${maintenanceCount}<small>대</small></div><div class="metric-note">실제 정비 등록 기준</div></div></div>
   <section class="panel"><div class="panel-head"><div><h2>차량 검색</h2><p class="sub">차량번호, 차종, 부서 또는 지정 운전자로 검색합니다.</p></div>${isAdmin()?`<button class="btn sm" onclick="aTab='veh';nav('admin')">차량 추가·수정</button>`:""}</div>
-    <div class="filter-bar"><div><label for="vehicleSearch">검색어</label><input id="vehicleSearch" value="${esc(vehicleQuery)}" placeholder="차량번호 또는 차종"></div><div><label for="vehicleStatus">차량 상태</label><select id="vehicleStatus"><option value="all" ${vehicleStatusFilter==="all"?"selected":""}>전체 상태</option><option value="ok" ${vehicleStatusFilter==="ok"?"selected":""}>운행 가능</option><option value="run" ${vehicleStatusFilter==="run"?"selected":""}>운행 중</option><option value="attention" ${vehicleStatusFilter==="attention"?"selected":""}>정비 확인</option><option value="unknown" ${vehicleStatusFilter==="unknown"?"selected":""}>점검 이력 없음</option></select></div><div><button class="btn" onclick="applyVehicleFilters()">필터 적용</button></div><div><button class="btn sec" onclick="resetVehicleFilters()">초기화</button></div></div>
+    <div class="filter-bar"><div><label for="vehicleSearch">검색어</label><input id="vehicleSearch" value="${esc(vehicleQuery)}" placeholder="차량번호·차종·정비항목"></div><div><label for="vehicleStatus">차량 상태</label><select id="vehicleStatus"><option value="all" ${vehicleStatusFilter==="all"?"selected":""}>전체 상태</option><option value="ok" ${vehicleStatusFilter==="ok"?"selected":""}>운행 가능</option><option value="run" ${vehicleStatusFilter==="run"?"selected":""}>운행 중</option><option value="maintenance" ${vehicleStatusFilter==="maintenance"?"selected":""}>정비 이력 있음</option><option value="attention" ${vehicleStatusFilter==="attention"?"selected":""}>정비 필요·예정</option><option value="unknown" ${vehicleStatusFilter==="unknown"?"selected":""}>점검 이력 없음</option></select></div><div><button class="btn" onclick="applyVehicleFilters()">필터 적용</button></div><div><button class="btn sec" onclick="resetVehicleFilters()">초기화</button></div></div>
   </section>
   <section class="panel table-card"><div class="panel-head" style="padding:20px 20px 0"><div><h2>차량 운영 목록</h2><p class="sub">검색 결과 ${filtered.length}대</p></div></div>
-    ${filtered.length?`<div class="tbl-wrap desktop-table"><table><thead><tr><th>차량번호</th><th>차종</th><th>소속</th><th>지정 담당자</th><th>누적 주행</th><th>상태</th></tr></thead><tbody>${filtered.map(x=>`<tr><td><b>${esc(x.v.plate)}</b><div class="sub">${esc(x.v.type)}</div></td><td>${esc(x.v.model)}</td><td>${esc(x.v.dept)}</td><td>${x.owners?esc(x.owners):x.v.type==="공용"?"공용":"미지정"}</td><td>${fmt(x.km)} km</td><td>${statusBadge(x.state)}</td></tr>`).join("")}</tbody></table></div><div class="mobile-list" style="padding:0 14px 14px">${filtered.map(x=>`<div class="mobile-record"><div class="mobile-record-head"><div><div class="plate">${esc(x.v.plate)}</div><div class="sub">${esc(x.v.model)} · ${esc(x.v.type)}</div></div>${statusBadge(x.state)}</div><div class="mobile-record-grid"><div><span>소속</span><strong>${esc(x.v.dept)}</strong></div><div><span>담당</span><strong>${x.owners?esc(x.owners):x.v.type==="공용"?"공용":"미지정"}</strong></div><div><span>누적 주행</span><strong>${fmt(x.km)} km</strong></div><div><span>최근 상태</span><strong>${esc(x.state.label)}</strong></div></div></div>`).join("")}</div>`:`<div class="empty-state"><strong>검색 결과 없음</strong>필터 조건을 변경해 주세요.</div>`}
+    ${filtered.length?`<div class="tbl-wrap desktop-table"><table><thead><tr><th>차량번호</th><th>차종</th><th>소속</th><th>지정 담당자</th><th>누적 주행</th><th>최근 정비 이력</th><th>상태</th></tr></thead><tbody>${filtered.map(x=>`<tr><td><b>${esc(x.v.plate)}</b><div class="sub">${esc(x.v.type)}</div></td><td>${esc(x.v.model)}</td><td>${esc(x.v.dept)}</td><td>${x.owners?esc(x.owners):x.v.type==="공용"?"공용":"미지정"}</td><td>${fmt(x.km)} km</td><td>${x.latestMaintenance?`<button class="btn sm sec" onclick="mPlate='${esc(x.v.plate)}';nav('maint')">${x.maintenance.length}건 · ${esc(x.latestMaintenance.date)}</button><div class="sub">${esc(x.latestMaintenance.item)}${x.latestMaintenance.shop?` · ${esc(x.latestMaintenance.shop)}`:""}</div>`:"-"}</td><td>${statusBadge(x.state)}</td></tr>`).join("")}</tbody></table></div><div class="mobile-list" style="padding:0 14px 14px">${filtered.map(x=>`<div class="mobile-record"><div class="mobile-record-head"><div><div class="plate">${esc(x.v.plate)}</div><div class="sub">${esc(x.v.model)} · ${esc(x.v.type)}</div></div>${statusBadge(x.state)}</div><div class="mobile-record-grid"><div><span>소속</span><strong>${esc(x.v.dept)}</strong></div><div><span>담당</span><strong>${x.owners?esc(x.owners):x.v.type==="공용"?"공용":"미지정"}</strong></div><div><span>누적 주행</span><strong>${fmt(x.km)} km</strong></div><div><span>최근 정비</span><strong>${x.latestMaintenance?`${esc(x.latestMaintenance.date)} · ${esc(x.latestMaintenance.item)}`:"이력 없음"}</strong></div></div>${x.latestMaintenance?`<button class="btn sm sec" onclick="mPlate='${esc(x.v.plate)}';nav('maint')">정비 이력 ${x.maintenance.length}건 보기</button>`:""}</div>`).join("")}</div>`:`<div class="empty-state"><strong>검색 결과 없음</strong>필터 조건을 변경해 주세요.</div>`}
   </section>`;
 }
 
