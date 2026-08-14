@@ -72,8 +72,22 @@ service cloud.firestore {
       allow read, create: if true;
       allow update: if isAdmin()
         || request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['endKm', 'dist', 'endDate', 'endTime', 'status']);
+          .hasOnly(['endKm', 'dist', 'endDate', 'endTime', 'status',
+            'lastReportedKm', 'lastReminderResponseAt', 'reminderAction',
+            'reminderNextHour', 'reminderActionAt']);
       allow delete: if isAdmin();
+    }
+
+    // 직원 계정은 Firebase Auth 대신 사내 ID/PW를 사용하므로 기기 토큰 등록만
+    // 최소 필드로 허용합니다. 토큰 전체 조회·삭제는 Google 인증 관리자만 가능합니다.
+    match /pushTokens/{tokenId} {
+      allow read, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(['token','aid','name','dept','active','updatedAt'])
+        && request.resource.data.token is string
+        && request.resource.data.aid is string
+        && request.resource.data.active == true;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['token','name','dept','active','updatedAt'])
+        && request.resource.data.aid == resource.data.aid;
     }
 
     // 직원의 정비 기록 등록은 유지하고, 저장 후 수정·삭제는 관리자만 허용합니다.
