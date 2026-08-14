@@ -89,6 +89,7 @@ body.inapp nav{display:flex}.nav-brand{display:flex;align-items:center;gap:12px;
 nav button{position:relative;display:flex;align-items:center;gap:12px;width:100%;padding:12px 13px;border:0;border-radius:10px;background:transparent;color:#b7cad8;font-size:13px;font-weight:700;cursor:pointer;text-align:left;margin:2px 0}nav button:hover{background:rgba(255,255,255,.07);color:#fff}nav button.act{background:rgba(18,179,168,.18);color:#fff}nav button.act::before{content:"";position:absolute;left:-16px;width:3px;height:24px;border-radius:0 4px 4px 0;background:linear-gradient(var(--teal),var(--lime))}.nav-icon{display:flex;align-items:center;justify-content:center;width:24px;height:24px;font-size:16px;color:#8ddbd4}.nav-label{display:block}
 .modal-bg{position:fixed;inset:0;background:rgba(7,22,34,.58);z-index:40;display:flex;align-items:center;justify-content:center;padding:20px}.modal{background:#fff;border-radius:18px;padding:22px;width:100%;max-width:620px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 70px rgba(0,0,0,.25)}.modal h3{color:var(--navy);margin-bottom:6px}
 .drive-reminder{max-width:590px}.reminder-head{display:flex;gap:12px;align-items:flex-start}.reminder-bell{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:12px;background:#fff1e7;color:#a65f20;font-size:20px;flex:0 0 auto}.reminder-recipient{display:inline-flex;margin-top:8px;padding:5px 9px;border-radius:999px;background:var(--teal-soft);color:#0d6c66;font-size:11px;font-weight:800}.reminder-hours{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:15px 0 12px}.reminder-hour{padding:9px 5px;border:1px solid var(--bd);border-radius:9px;background:#f7f9fa;color:var(--mut);font-size:12px;text-align:center}.reminder-hour.act{background:var(--navy);border-color:var(--navy);color:#fff}.reminder-trip{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:10px;padding:12px;border-radius:11px;background:#f3f6f8}.reminder-trip span{display:block;color:var(--mut);font-size:10px}.reminder-trip strong{display:block;margin-top:3px;color:var(--navy);font-size:12px}.reminder-choices{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}.reminder-choice{min-height:88px;padding:12px;border:1px solid var(--bd);border-radius:11px;background:#fff;text-align:left;color:var(--txt);cursor:pointer}.reminder-choice strong,.reminder-choice span{display:block}.reminder-choice span{margin-top:5px;color:var(--mut);font-size:12px}.reminder-choice.act{border:2px solid var(--teal);background:var(--teal-soft)}.reminder-actions{display:grid;grid-template-columns:auto 1fr;gap:9px;margin-top:14px}.reminder-actions .btn{margin:0}.reminder-next{display:none;margin-top:6px;color:#0d6c66;font-size:11px;font-weight:700}.reminder-next.show{display:block}
+.push-gate-wrap{min-height:calc(100vh - 150px);display:flex;align-items:center;justify-content:center;padding:22px}.push-gate-card{width:100%;max-width:560px;background:#fff;border:1px solid var(--bd);border-radius:20px;padding:30px;box-shadow:0 18px 54px rgba(13,35,51,.12)}.push-gate-icon{display:flex;align-items:center;justify-content:center;width:64px;height:64px;margin:0 auto 16px;border-radius:20px;background:linear-gradient(135deg,var(--teal-soft),#e8f5de);color:var(--navy);font-size:28px}.push-gate-card h2{text-align:center;color:var(--navy);margin-bottom:8px}.push-gate-card>.sub{text-align:center;font-size:13px;line-height:1.7}.push-gate-status{display:flex;align-items:center;gap:10px;margin:20px 0 14px;padding:13px 14px;border-radius:12px;background:#f3f6f8;color:var(--navy);font-size:13px;font-weight:800}.push-gate-status i{width:10px;height:10px;border-radius:50%;background:#d6932e;flex:0 0 auto}.push-gate-status.denied i{background:#d52f3a}.push-gate-status.ready i{background:#128a59}.push-gate-steps{margin:0 0 18px;padding:14px 16px 14px 34px;border:1px solid #dce7ed;border-radius:12px;background:#fbfdfe;color:#40566a;font-size:12px;line-height:1.8}.push-gate-card .btn{width:100%;margin-top:9px}.push-gate-note{text-align:center;margin-top:12px;color:var(--mut);font-size:11px;line-height:1.6}
 #toast{position:fixed;bottom:26px;left:calc(50% + 126px);transform:translateX(-50%);background:var(--navy);color:#fff;padding:11px 18px;border-radius:999px;font-size:13px;z-index:50;display:none;white-space:nowrap;box-shadow:var(--shadow)}
 .notice-body{white-space:pre-wrap;font-size:14px;line-height:1.7;margin:10px 0;max-height:45vh;overflow-y:auto}
 .audit-detail{margin-top:12px;padding:12px;border:1px solid var(--bd);border-radius:10px;background:#f7f9fa;color:#314457;font:11px/1.55 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:48vh;overflow:auto}
@@ -99,7 +100,8 @@ nav button{position:relative;display:flex;align-items:center;gap:12px;width:100%
 .login-card::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,var(--teal),var(--lime))}.login-card img{display:block;margin:0 auto 12px;max-width:220px;height:auto}.login-kicker{text-align:center;margin:0 0 21px;color:#607588;font-size:10px;font-weight:800;letter-spacing:2.1px}.login-card label{color:#40566a}.login-card .btn{background:linear-gradient(135deg,var(--navy),#1b5962)!important}.login-card .btn.admin-login{background:#fff!important;color:var(--navy);border-color:#b8c7d1;box-shadow:0 3px 10px rgba(13,35,51,.08)}.login-card .btn.admin-login:hover{background:#f7fafb!important;border-color:var(--teal);color:#087b73}.login-card .chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);margin-top:10px}.login-card .chk input{width:auto}.login-card .note{margin-top:18px;background:linear-gradient(135deg,var(--navy),#173b56);color:#edf5f7;border-left:4px solid var(--teal);border-radius:11px;padding:13px 14px;font-size:12px;line-height:1.6}
 @media(max-width:1150px){.metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fleet-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-grid{grid-template-columns:1fr}.filter-bar{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){body.inapp{padding-left:0;padding-bottom:78px}header{min-height:76px;padding:12px 15px}.header-kicker{display:none}header h1{font-size:18px}.header-desc{font-size:11px}.user-copy{display:none}.logout-btn{padding:8px 10px}main{padding:16px 14px 106px}nav{top:auto;right:0;width:auto;height:76px;padding:6px max(6px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-left));background:rgba(255,255,255,.98);border-top:1px solid var(--bd);border-right:0;box-shadow:0 -6px 24px rgba(13,35,51,.08);flex-direction:row;align-items:stretch;overflow-x:auto}.nav-brand{display:none}nav button{flex:1;min-width:58px;justify-content:center;flex-direction:column;gap:2px;padding:6px 4px;margin:0;color:#71808e;text-align:center;border-radius:10px;font-size:9px}nav button.act{background:var(--teal-soft);color:var(--navy)}nav button.act::before{display:none}.nav-icon{width:auto;height:20px;font-size:17px;color:inherit}.nav-label{font-size:9px;white-space:nowrap}#toast{left:50%;bottom:90px;max-width:calc(100vw - 28px);white-space:normal;text-align:center}.modal-bg{align-items:flex-end;padding:0}.modal{border-radius:18px 18px 0 0;padding:20px 16px calc(26px + env(safe-area-inset-bottom));max-height:90vh}.quick-action{align-items:flex-start;flex-direction:column}.quick-action .btn{width:100%}.assignment-list{grid-template-columns:1fr}.table-card .tbl-wrap.desktop-table{display:none}.mobile-list{display:block}.filter-bar{grid-template-columns:1fr 1fr}.activity-row{grid-template-columns:1fr auto}.activity-row>:nth-child(3),.activity-row>:nth-child(4){display:none}}
-@media(max-width:620px){.metrics-grid{grid-template-columns:1fr 1fr;gap:10px}.metric-card{min-height:112px;padding:14px}.metric-value{font-size:24px;margin-top:11px}.fleet-grid{grid-template-columns:1fr}.form-grid,.filter-bar{grid-template-columns:1fr}.form-grid .span-2{grid-column:auto}.row{flex-direction:column;gap:0}.stat{grid-template-columns:1fr 1fr}.card,.panel{padding:16px;border-radius:14px}.dashboard-grid{gap:12px}#login{justify-content:center;align-items:flex-start;padding:clamp(28px,8vh,72px) 16px 24px;background-position:34% center}#login::before{background:rgba(244,250,253,.34)}.login-card{max-width:420px;padding:30px 22px 24px;border-radius:18px}.login-card img{max-width:200px}.reminder-trip{grid-template-columns:1fr 1fr}.reminder-trip>div:first-child{grid-column:1/-1}.reminder-choices{grid-template-columns:1fr}.reminder-actions{grid-template-columns:1fr}.reminder-actions .btn{width:100%}}
+@media(max-width:900px){body.push-gated{padding-bottom:0}body.push-gated nav{display:none}body.push-gated main{padding-bottom:30px}}
+@media(max-width:620px){.metrics-grid{grid-template-columns:1fr 1fr;gap:10px}.metric-card{min-height:112px;padding:14px}.metric-value{font-size:24px;margin-top:11px}.fleet-grid{grid-template-columns:1fr}.form-grid,.filter-bar{grid-template-columns:1fr}.form-grid .span-2{grid-column:auto}.row{flex-direction:column;gap:0}.stat{grid-template-columns:1fr 1fr}.card,.panel{padding:16px;border-radius:14px}.dashboard-grid{gap:12px}#login{justify-content:center;align-items:flex-start;padding:clamp(28px,8vh,72px) 16px 24px;background-position:34% center}#login::before{background:rgba(244,250,253,.34)}.login-card{max-width:420px;padding:30px 22px 24px;border-radius:18px}.login-card img{max-width:200px}.reminder-trip{grid-template-columns:1fr 1fr}.reminder-trip>div:first-child{grid-column:1/-1}.reminder-choices{grid-template-columns:1fr}.reminder-actions{grid-template-columns:1fr}.reminder-actions .btn{width:100%}.push-gate-wrap{min-height:calc(100vh - 110px);padding:8px 0 30px}.push-gate-card{padding:24px 18px;border-radius:16px}.push-gate-icon{width:56px;height:56px;border-radius:17px}.push-gate-card h2{font-size:20px}}
 @media print{header,nav,.tabs,#toast,.stat,button{display:none!important}body,body.inapp{padding:0;background:#fff}.card,.panel{box-shadow:none;border:0}main{padding:0;max-width:none}#aBody>.card:first-child{display:none}}
 </style>
 </head>
@@ -201,6 +203,7 @@ const ADMIN_OPERATORS=["곽봉수","빈윤정","연은주","지석근","엄지�
 
 /* ═══════════ 저장소 (Firebase ↔ 기기저장 자동 전환) ═══════════ */
 let useFB=false, fdb=null, fauth=null, messaging=null, serviceWorkerRegistration=null;
+let pushGatePassed=false,pushGateBusy=false;
 try{
   const c=window.FIREBASE_CONFIG||{};
   if(c.apiKey && !/여기에/.test(c.apiKey)){
@@ -222,6 +225,53 @@ async function registerPushToken(){
     await fdb.collection("pushTokens").doc(pushTokenDocId(token)).set({token,aid:SESSION.aid,name:SESSION.name,dept:SESSION.dept,active:true,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
     return true;
   }catch(error){ console.warn("푸시 알림 등록 실패",error); return false; }
+}
+function isDriverAccount(){ return !!SESSION&&SESSION.role==="user"&&!isAdmin(); }
+function pushPermissionLabel(){
+  if(!useFB) return "서버 연결 필요";
+  if(!("Notification" in window)) return "현재 브라우저에서 알림 미지원";
+  if(Notification.permission==="granted") return "알림 허용됨 · 기기 등록 필요";
+  if(Notification.permission==="denied") return "알림 권한 차단됨";
+  return "알림 권한 설정 필요";
+}
+function renderPushGate(message=""){
+  if(!isDriverAccount()) return;
+  pushGatePassed=false;
+  const modalRoot=$("#modal-root"); if(modalRoot) modalRoot.innerHTML="";
+  document.body.classList.add("push-gated");
+  updateShellMeta("my");
+  $("#pageTitle").textContent="푸시 알림 필수 설정";
+  $("#pageDesc").textContent="운행 종료 알림을 받을 수 있도록 현재 기기를 등록해 주세요.";
+  $("#navbar").innerHTML=`<div class="nav-brand"><img src="icon-192.png" alt="재현하늘창 로고"><div><strong>JHC FLEET</strong><small>알림 설정 필요</small></div></div>`;
+  const supported="Notification" in window,permission=supported?Notification.permission:"unsupported";
+  const denied=permission==="denied",buttonText=denied?"권한 설정 후 다시 확인":permission==="granted"?"기기 다시 등록":"푸시 알림 허용";
+  $("#app").innerHTML=`<div class="push-gate-wrap"><section class="push-gate-card" aria-labelledby="pushGateTitle">
+    <div class="push-gate-icon">🔔</div><h2 id="pushGateTitle">푸시 알림 설정이 필요합니다</h2>
+    <p class="sub">운전자 계정은 미종료 운행 알림을 받을 수 있어야 앱을 사용할 수 있습니다.<br>Google 관리자 계정은 이 설정 대상에서 제외됩니다.</p>
+    ${message?`<div class="banner warn" style="margin-top:16px">${esc(message)}</div>`:""}
+    <div class="push-gate-status ${denied?"denied":""}"><i></i><span>${esc(pushPermissionLabel())}</span></div>
+    ${denied?`<ol class="push-gate-steps"><li>Chrome 오른쪽 위 ⋮ 메뉴를 누릅니다.</li><li><b>설정 → 사이트 설정 → 알림</b>으로 이동합니다.</li><li><b>sehyunka.github.io</b>를 선택하고 알림을 허용합니다.</li><li>앱으로 돌아와 아래 버튼을 누릅니다.</li></ol>`:`<div class="banner info">아래 버튼을 누른 뒤 Chrome의 알림 요청에서 <b>허용</b>을 선택해 주세요.</div>`}
+    <button class="btn grn" onclick="enableDrivePush()" ${pushGateBusy?"disabled":""}>${pushGateBusy?"등록 확인 중…":buttonText}</button>
+    <button class="btn sec" onclick="retryRequiredPushRegistration()" ${pushGateBusy?"disabled":""}>권한 상태 다시 확인</button>
+    <button class="btn sec" onclick="logout()">로그아웃</button>
+    <p class="push-gate-note">알림 권한은 현재 휴대폰·브라우저별로 한 번씩 설정해야 합니다.<br>앱에서는 사용자의 브라우저 권한을 강제로 변경할 수 없습니다.</p>
+  </section></div>`;
+}
+async function verifyRequiredDriverPush(){
+  if(!isDriverAccount()) return true;
+  if(!useFB||!("Notification" in window)||Notification.permission!=="granted") return false;
+  return await registerPushToken();
+}
+async function retryRequiredPushRegistration(){
+  if(!isDriverAccount()||pushGateBusy) return;
+  if(!("Notification" in window)) return renderPushGate("Android Chrome 또는 알림을 지원하는 브라우저로 접속해 주세요.");
+  if(Notification.permission!=="granted") return renderPushGate(Notification.permission==="denied"?"Chrome 설정에서 이 사이트의 알림을 허용한 후 다시 확인해 주세요.":"푸시 알림 허용 버튼을 눌러 설정을 완료해 주세요.");
+  pushGateBusy=true; renderPushGate();
+  const registered=await registerPushToken();
+  pushGateBusy=false;
+  if(!registered) return renderPushGate("기기 등록에 실패했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.");
+  pushGatePassed=true;
+  await enterApp(true);
 }
 const LS={
   get(k){ try{return JSON.parse(localStorage.getItem("jhc2_"+k))||[]}catch(e){return[]} },
@@ -328,11 +378,35 @@ function currentReminderHour(date=new Date()){ const hour=date.getHours();return
 function reminderKey(trip,hour){ return `jhc2_drive_reminder_${trip.id}_${todayStr()}_${hour}`; }
 function isTripDriver(trip){ return !!SESSION&&!isAdmin()&&trip&&trip.uid===SESSION.aid; }
 async function enableDrivePush(){
-  if(!("Notification" in window)) return toast("이 브라우저는 푸시 알림을 지원하지 않습니다");
-  const permission=await Notification.requestPermission();
-  if(permission!=="granted") return toast("브라우저 알림 권한이 허용되지 않았습니다");
+  if(pushGateBusy) return;
+  const wasGated=document.body.classList.contains("push-gated");
+  if(!("Notification" in window)){
+    if(wasGated) renderPushGate("Android Chrome 또는 알림을 지원하는 브라우저로 접속해 주세요.");
+    return toast("이 브라우저는 푸시 알림을 지원하지 않습니다");
+  }
+  if(Notification.permission==="denied"){
+    pushGatePassed=false;
+    renderPushGate("Chrome 설정에서 이 사이트의 알림을 허용한 후 다시 확인해 주세요.");
+    return toast("브라우저에서 알림이 차단되어 있습니다");
+  }
+  const permission=Notification.permission==="granted"?"granted":await Notification.requestPermission();
+  if(permission!=="granted"){
+    pushGatePassed=false;
+    renderPushGate("앱을 사용하려면 Chrome의 알림 요청에서 허용을 선택해 주세요.");
+    return toast("브라우저 알림 권한이 허용되지 않았습니다");
+  }
+  pushGateBusy=true;
+  if(wasGated) renderPushGate();
   const registered=await registerPushToken();
-  toast(registered?"운행 종료 푸시 알림을 사용합니다":"푸시 설정을 확인해 주세요");nav("my");
+  pushGateBusy=false;
+  if(!registered){
+    pushGatePassed=false;
+    if(wasGated) renderPushGate("기기 등록에 실패했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.");
+    return toast("푸시 설정을 확인해 주세요");
+  }
+  pushGatePassed=true;
+  toast("운행 종료 푸시 알림을 사용합니다");
+  if(wasGated) await enterApp(true); else nav("my");
 }
 function reminderSignal(){
   try{
@@ -545,7 +619,7 @@ function loginOnEnter(event){
 }
 function renderLogin(msg){
   loginComposing=false; loginAfterComposition=false; clearTimeout(loginSettleTimer); loginSettleTimer=null;
-  document.body.classList.remove("inapp");
+  document.body.classList.remove("inapp","push-gated");
   const navEl=$("#navbar"); if(navEl) navEl.innerHTML="";
   $("#login").style.display="flex"; $("#app").innerHTML="";
   $("#login").innerHTML=`
@@ -630,6 +704,7 @@ async function restoreAdminSession(){
 }
 async function logout(){
   clearInterval(reminderTimer);reminderTimer=null;reminderTrip=null;
+  pushGatePassed=false;pushGateBusy=false;document.body.classList.remove("push-gated");
   seenNotices.clear(); SESSION=null; localStorage.removeItem("jhc2_sess");
   if(fauth?.currentUser){ try{await fauth.signOut();}catch(e){console.warn(e);} }
   renderLogin();
@@ -655,6 +730,12 @@ async function enterApp(showNotice){
   $("#uDept").textContent=SESSION.dept||"재현하늘창";
   $("#mode").textContent=useFB?"서버 공유":"기기 저장";
   $("#mode").className="badge"+(useFB?" on":"");
+  if(isDriverAccount()&&!pushGatePassed){
+    const ready=await verifyRequiredDriverPush();
+    if(!ready){ renderPushGate(); return; }
+    pushGatePassed=true;
+  }
+  document.body.classList.remove("push-gated");
   const items=[["home","▦","홈"]];
   if(!isAdmin()) items.push(["drive","↗","운행 입력"]);
   items.push(["vehicles","▤","차량 관리"],["maint","◇","정비 관리"],["history","≡","운행 기록"]);
@@ -740,6 +821,7 @@ function syncSessionAccount(){
 let VIEW="home",NAV_SEQUENCE=0;
 async function nav(v){
   if(!SESSION) return renderLogin();
+  if(isDriverAccount()&&!pushGatePassed) return renderPushGate();
   const sequence=++NAV_SEQUENCE;
   const requestedV=v==="shared"?"drive":v;
   const activeV=isAdmin()&&requestedV==="drive"?"home":requestedV;
@@ -1780,6 +1862,15 @@ async function waitForAuthReady(){
   }
   if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(reg=>serviceWorkerRegistration=reg).catch(()=>{});
 })();
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState!=="visible"||!isDriverAccount()) return;
+  if(!("Notification" in window)||Notification.permission!=="granted"){
+    pushGatePassed=false;
+    renderPushGate("알림 권한이 해제되어 앱 사용이 일시 중지되었습니다. 권한을 다시 허용해 주세요.");
+  }else if(!pushGatePassed){
+    retryRequiredPushRegistration();
+  }
+});
 </script>
 <script src="book-format.js"></script>
 </body>
