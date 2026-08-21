@@ -95,5 +95,30 @@ service cloud.firestore {
       allow read, create: if true;
       allow update, delete: if isAdmin();
     }
+
+    // 직원이 "금일 휴일(운행 없음)"을 스스로 신고하는 기록입니다. 시작 알림을
+    // 09·10시에 반복하지 않기 위해 사용하며, 신고 자체는 삭제되지 않습니다.
+    match /selfHolidayReports/{documentId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(['aid','name','dept','date','reportedAt'])
+        && request.resource.data.aid is string
+        && request.resource.data.date is string;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // 시작 알림(08·09·10시) 발송 이력입니다. Cloud Functions(Admin SDK)에서만
+    // 기록하며 클라이언트의 직접 쓰기는 허용하지 않습니다.
+    match /startReminderDeliveries/{documentId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // 매주 월요일 08시 개인별 습관 점검 알림 발송 이력입니다. Cloud
+    // Functions(Admin SDK)에서만 기록합니다.
+    match /weeklyReportDeliveries/{documentId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }
