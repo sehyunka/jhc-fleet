@@ -479,6 +479,98 @@ async function checkDriveReminder(force=false){
   localStorage.setItem(key,new Date().toISOString());openDriveReminder(trip,alertHour,"finish");
 }
 function startDriveReminderMonitor(){clearInterval(reminderTimer);reminderTimer=setInterval(()=>checkDriveReminder().catch(console.warn),30000);setTimeout(()=>checkDriveReminder().catch(console.warn),1200);}
+
+  /* 운행 시작 미입력 알림 (평일 08·09·10시) */
+  const START_REMINDER_HOURS=[8,9,10];
+  let startReminderTimer=null;
+  function currentStartReminderHour(date=new Date()){ const hour=date.getHours();return START_REMINDER_HOURS.includes(hour)?hour:null; }
+  function startReminderKey(hour,dateStr=todayStr()){ return `jhc2_start_reminder_${SESSION?.aid}_${dateStr}_${hour}`; }
+  function holidaySelfReportKey(dateStr=todayStr()){ return `jhc2_start_holiday_${SESSION?.aid}_${dateStr}`; }
+  function hasAssignedVehicle(){ return !!SESSION&&accountVehiclePlates(SESSION).length>0; }
+  async function hasStartedTripToday(){
+      if(!SESSION) return true;
+      const trips=(await dbAll("trips")).filter(t=>t.uid===SESSION.aid&&t.date===todayStr());
+      return trips.length>0;
+  }
+  function openStartReminder(hour){
+      reminderSignal();
+      const plates=accountVehiclePlates(SESSION),nextHour=hour<10?`${String(hour+1).padStart(2,"0")}:00`:"오늘 마지막 알림";
+      modal(`<section class="drive-reminder" role="dialog" aria-modal="true" aria-labelledby="startReminderTitle">
+          <div class="reminder-head"><div class="reminder-bell">▲</div><div><h3 id="startReminderTitle">운행 시작 확인이 필요합니다</h3><p class="sub">회사 영업일 ${String(hour).padStart(2,"0")}:00 · 소리와 진동으로 안내</p><div class="reminder-recipient">${esc(SESSION.name)} 님 · ${esc(plates.join(", ")||"지정 차량")}</div></div></div>
+    <div class="reminder-hours">${START_REMINDER_HOURS.map(h=>`<div class="reminder-hour ${h===hour?"act":""}">${String(h).padStart(2,"0")}:00</div>`).join("")}</div>
+        <p class="field-help">오늘 운행을 시작하시면 [운행 입력] 메뉴에서 출발 계기판 KM을 기록해 주세요.</p>
+            <div class="reminder-actions" style="display:flex;flex-direction:column;gap:8px">
+                  <button type="button" class="btn grn drive-start-btn" onclick="closeModal();nav('drive')">① 시작 버튼 입력</button>
+                        <button type="button" class="btn sec" onclick="closeModal()">② 잠시 후 입력 (${nextHour})</button>
+                              <button type="button" class="btn" style="background:#8a97a3" onclick="reportTodayHoliday()">③ 금일 휴일 (오늘 운행하지 않음)</button>
+                                  </div></section>`);
+  }
+  async function reportTodayHoliday(){
+      localStorage.setItem(holidaySelfReportKey(),new Date().toISOString());
+      if(useFB&&fdb&&SESSION){
+            try{
+                    await fdb.collection("selfHolidayReports").doc(`${SESSION.aid}_${todayStr()}`).set({aid:SESSION.aid,name:SESSION.name,dept:SESSION.dept,date:todayStr(),reportedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+            }catch(e){ console.warn("휴일 신고 저장 실패",e); }
+      }
+      closeModal();
+      toast("오늘은 휴일로 표시했습니다. 이후 시작 알림이 표시되지 않습니다.");
+  }
+  async function checkStartReminder(force=false){
+      if(!SESSION||isAdmin()||isOffday(todayStr())||$(".drive-reminder")) return;
+      if(!hasAssignedVehicle()) return;
+      if(localStorage.getItem(holidaySelfReportKey())) return;
+      const hour=currentStartReminderHour();if(!hour&&!force) return;
+      const alertHour=hour||8,key=startReminderKey(alertHour);if(!force&&localStorage.getItem(key)) return;
+      if(await hasStartedTripToday()) return;
+      localStorage.setItem(key,new Date().toISOString());openStartReminder(alertHour);
+  }
+  function startStartReminderMonitor(){clearInterval(startReminderTimer);startReminderTimer=setInterval(()=>checkStartReminder().catch(console.warn),30000);setTimeout(()=>checkStartReminder().catch(console.warn),1500);}
+
+  /* 주간 개인별 습관 점검 팝업 (매주 월요일 08시) */
+  let weeklyReportTimer=null;
+  function mondayOf(dateStr){ const d=new Date(dateStr+"T00:00:00");const day=d.getDay();const diff=day===0?-6:1-day;d.setDate(d.getDate()+diff);return localDateValue(d); }
+  function addDaysStr(dateStr,n){ const d=new Date(dateStr+"T00:00:00");d.setDate(d.getDate()+n);return localDateValue(d); }
+  function prevWeekRange(baseDateStr=todayStr()){ const thisMonday=mondayOf(baseDateStr),prevMonday=addDaysStr(thisMonday,-7),prevFriday=addDaysStr(prevMonday,4);return {from:prevMonday,to:prevFriday}; }
+  function weeklyReportKey(weekStart){ return `jhc2_weekly_report_${SESSION?.aid}_${weekStart}`; }
+  function workdaysInRangeClient(from,to){ const days=[];let d=new Date(from+"T00:00:00");const end=new Date(to+"T00:00:00");while(d<=end){const ds=localDateValue(d);if(!isOffday(ds))days.push(ds);d.setDate(d.getDate()+1);}return days; }
+  function computePersonalWeekStats(from,to,trips){
+      const days=workdaysInRangeClient(from,to);
+      let successDays=0,failDays=0;const details=[];
+      for(const ds of days){
+            const dayTrips=trips.filter(t=>t.date===ds);
+            const started=dayTrips.length>0;
+            const ended=dayTrips.some(t=>!isRunningTrip(t));
+            if(!started){ failDays++; details.push({date:ds,ok:false,reason:"미시작"}); }
+            else if(!ended){ failDays++; details.push({date:ds,ok:false,reason:"종료 미완료"}); }
+            else { successDays++; details.push({date:ds,ok:true,reason:"완료"}); }
+      }
+      return {totalDays:days.length,successDays,failDays,details};
+  }
+  function openWeeklyReportPopup(stats,from,to){
+      const {successDays,failDays,totalDays,details}=stats,need=failDays>0;
+      modal(`<section class="drive-reminder weekly-report" role="dialog" aria-modal="true" aria-labelledby="weeklyReportTitle">
+          <div class="reminder-head"><div class="reminder-bell">■</div><div><h3 id="weeklyReportTitle">주간 운행기록 점검</h3><p class="sub">${esc(from)} ~ ${esc(to)} · ${esc(SESSION.name)} 님의 지난주 시작·종료 기록입니다.</p></div></div>
+              <p style="font-size:15px;font-weight:800;margin:10px 0;color:${need?"var(--red)":"var(--grn)"}">${totalDays}일 중 ${successDays}일 성공, ${failDays}일 실패${need?" — 개선이 필요합니다.":" — 잘 지켜주고 계십니다!"}</p>
+                  <div class="tbl-wrap"><table><thead><tr><th>일자</th><th>결과</th></tr></thead><tbody>
+                      ${details.map(x=>`<tr><td>${esc(x.date)}</td><td>${x.ok?`<span class="status-pill ok">완료</span>`:`<span class="status-pill due">${esc(x.reason)}</span>`}</td></tr>`).join("")||"<tr><td colspan=2>해당 주간 근무일 없음</td></tr>"}
+                          </tbody></table></div>
+                              <button class="btn" onclick="closeModal()">확인</button></section>`);
+  }
+  async function checkWeeklyPersonalReport(force=false){
+      if(!SESSION||isAdmin()||$(".drive-reminder")) return;
+      if(!hasAssignedVehicle()) return;
+      const now=new Date();
+      if(!force&&!(now.getDay()===1&&now.getHours()===8)) return;
+      const {from,to}=prevWeekRange();
+      const key=weeklyReportKey(from);if(!force&&localStorage.getItem(key)) return;
+      const trips=(await dbAll("trips")).filter(t=>t.uid===SESSION.aid&&t.date>=from&&t.date<=to);
+      const stats=computePersonalWeekStats(from,to,trips);
+      localStorage.setItem(key,new Date().toISOString());
+      openWeeklyReportPopup(stats,from,to);
+  }
+  function startWeeklyReportMonitor(){clearInterval(weeklyReportTimer);weeklyReportTimer=setInterval(()=>checkWeeklyPersonalReport().catch(console.warn),300000);setTimeout(()=>checkWeeklyPersonalReport().catch(console.warn),2000);}
+
+  
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt=n=>n==null||n===""?"-":Number(n).toLocaleString();
 function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",2500);}
@@ -767,12 +859,22 @@ async function enterApp(showNotice){
   if(showNotice) showNotices();
   if(!isAdmin()){
     startDriveReminderMonitor();
+        startStartReminderMonitor();
+        startWeeklyReportMonitor();
     if("Notification" in window&&Notification.permission==="granted") registerPushToken();
     const query=new URLSearchParams(location.search),tripId=query.get("tripReminder"),choice=query.get("choice");
+        const startReminderFlag=query.get("startReminder"),weeklyReminderFlag=query.get("weeklyReminder");
     if(tripId){
       const trip=(await dbAll("trips")).find(t=>t.id===tripId);
       if(trip&&isTripDriver(trip)) setTimeout(()=>openDriveReminder(trip,currentReminderHour()||19,choice==="continue"?"continue":"finish"),350);
       history.replaceState({},"",location.pathname+location.hash);
+    }else if(startReminderFlag){
+            if(choice==="holiday") setTimeout(()=>reportTodayHoliday(),350);
+            else if(choice!=="later") setTimeout(()=>checkStartReminder(true),350);
+            history.replaceState({},"",location.pathname+location.hash);
+    }else if(weeklyReminderFlag){
+            setTimeout(()=>checkWeeklyPersonalReport(true),350);
+            history.replaceState({},"",location.pathname+location.hash);
     }
   }
 }
@@ -1261,9 +1363,9 @@ let aTab="status", fleetStatusFilter="running";
 async function vAdmin(){
   if(!isAdmin()){ $("#app").innerHTML=`<div class="banner warn">총무부 관리자만 접근할 수 있습니다.</div>`; return; }
   const activeTrips=(await dbAll("trips")).filter(isRunningTrip).length;
-  const tabs=[["status","실시간 운행 현황"],["trips","운행 기록"],["book","운행기록부"],["veh","차량 관리"],["acc","직원·계정"],["maint","정비 이력"],["notice","공지"],["set","앱 설정"],["audit","변경 이력"]];
+  const tabs=[["status","실시간 운행 현황"],["trips","운행 기록"],["book","운행기록부"],["weekly","주간 리포트"],["veh","차량 관리"],["acc","직원·계정"],["maint","정비 이력"],["notice","공지"],["set","앱 설정"],["audit","변경 이력"]];
   $("#app").innerHTML=`<div class="metrics-grid"><div class="metric-card"><div class="metric-label">활성 차량</div><div class="metric-value">${VEHICLES.length}<small>대</small></div><div class="metric-note">차량 관리 데이터</div></div><div class="metric-card"><div class="metric-label">직원 계정</div><div class="metric-value">${ACCOUNTS.length}<small>명</small></div><div class="metric-note">로그인 계정 기준</div></div><div class="metric-card active"><div class="metric-label">운행 중</div><div class="metric-value">${activeTrips}<small>건</small></div><div class="metric-note">미종료 기록</div></div><div class="metric-card"><div class="metric-label">저장 모드</div><div class="metric-value" style="font-size:21px">${useFB?"서버 공유":"기기 저장"}</div><div class="metric-note">현재 연결 상태</div></div></div><section class="panel"><div class="panel-head"><div><h2>관리 영역</h2><p class="sub">직원, 차량, 기록과 앱 설정을 구역별로 관리합니다.</p></div></div><div class="tabs">${tabs.map(t=>`<div class="tab ${aTab===t[0]?"act":""}" onclick="aTab='${t[0]}';nav('admin')">${t[1]}</div>`).join("")}</div></section><div id="aBody"></div>`;
-  await ({status:aFleetStatus,trips:aTrips,book:aBook,veh:aVeh,acc:aAcc,maint:aMaint,notice:aNotice,set:aSet,audit:aAudit})[aTab]();
+  await ({status:aFleetStatus,trips:aTrips,weekly:aWeekly,book:aBook,veh:aVeh,acc:aAcc,maint:aMaint,notice:aNotice,set:aSet,audit:aAudit})[aTab]();
 }
 function fleetTripKey(t,end=false){ return `${end?(t.endDate||t.date||""):(t.date||"")}${end?(t.endTime||""):(t.startTime||"")}`; }
 function setFleetStatusFilter(value){ fleetStatusFilter=value; nav("admin"); }
@@ -1292,7 +1394,75 @@ async function aFleetStatus(){
   ${filtered.map(x=>{const t=x.trip,state=x.state==="running"?{level:"run",label:"운행 중"}:x.state==="ended"?{level:"ok",label:"운행 종료"}:{level:"unknown",label:"기록 없음"};return `<tr><td><b>${esc(x.v.plate)}</b></td><td>${esc(x.v.model)}<div class="sub">${esc(x.v.type)}</div></td><td>${statusBadge(state)}</td><td>${esc(t?.user||"-")}</td><td>${esc(t?.dept||x.v.dept||"-")}</td><td>${t?`${esc(t.date||"-")}<br>${esc(t.startTime||"-")}`:"-"}</td><td>${t?fmt(t.startKm):"-"}</td><td>${x.state==="running"?`<span class="m-warn">미종료</span>`:t?`${esc(t.endDate||t.date||"-")}<br>${esc(t.endTime||"-")}`:"-"}</td><td>${x.state==="ended"?fmt(t.endKm):"-"}</td><td>${x.state==="ended"&&t?fmt(t.dist!=null?t.dist:(t.endKm-t.startKm)):"-"}</td></tr>`}).join("")||"<tr><td colspan=10>해당 상태의 차량이 없습니다.</td></tr>"}
   </tbody></table></div><div class="mobile-list" style="padding:14px">${filtered.map(x=>{const t=x.trip,state=x.state==="running"?{level:"run",label:"운행 중"}:x.state==="ended"?{level:"ok",label:"운행 종료"}:{level:"unknown",label:"기록 없음"};return `<div class="mobile-record"><div class="mobile-record-head"><div><strong>${esc(x.v.plate)}</strong><div class="sub">${esc(x.v.model)} · ${esc(x.v.type)}</div></div>${statusBadge(state)}</div><div class="mobile-record-grid"><div><span>사용자</span><strong>${esc(t?.user||"-")}</strong></div><div><span>부서</span><strong>${esc(t?.dept||x.v.dept||"-")}</strong></div><div><span>시작</span><strong>${t?`${esc(t.date||"-")} ${esc(t.startTime||"-")}`:"-"}</strong></div><div><span>종료</span><strong>${x.state==="running"?"미종료":t?`${esc(t.endDate||t.date||"-")} ${esc(t.endTime||"-")}`:"-"}</strong></div><div><span>시작 km</span><strong>${t?fmt(t.startKm):"-"}</strong></div><div><span>종료 km</span><strong>${x.state==="ended"?fmt(t.endKm):"-"}</strong></div></div></div>`}).join("")||`<div class="empty-state"><strong>해당 차량 없음</strong>다른 상태 필터를 선택해 주세요.</div>`}</div></section>`;
 }
-async function aTrips(){
+/* 주간 리포트 (관리부서 · 차량별 시작·종료 미입력 점검) */
+  function defaultWeeklyRange(){ return prevWeekRange(); }
+  window._wf=window._wf||null;
+  async function aWeekly(){
+      const range=window._wf||defaultWeeklyRange();
+      $("#aBody").innerHTML=`
+        <div class="card"><h2>📋 주간 차량별 운행 점검 리포트</h2>
+            <p class="sub">선택 기간(근무일 기준)에 시작 또는 종료 기록이 누락된 차량을 확인합니다. 기본은 지난주(월~금)이며 기간을 늘려 조회할 수 있습니다.</p>
+                <div class="row"><div><label>조회 시작일</label><input type="date" id="wF" value="${esc(range.from)}"></div>
+                    <div><label>조회 종료일</label><input type="date" id="wT" value="${esc(range.to)}"></div></div>
+                        <div class="row">
+                            <button class="btn sm teal" onclick="window._wf={from:$('#wF').value,to:$('#wT').value};nav('admin')">🔍 조회</button>
+                                <button class="btn sm sec" onclick="window._wf=null;nav('admin')">지난주로 초기화</button>
+                                    <button class="btn sm grn" onclick="dlWeeklyExcel()">📥 엑셀 다운로드</button>
+                                        <button class="btn sm sec" onclick="window.print()">🖨 PDF·인쇄</button></div>
+                                          </div>
+                                            <div id="wBody"></div>`;
+      await renderWeeklyReport(range.from,range.to);
+  }
+async function renderWeeklyReport(from,to){
+    const el=$("#wBody"); if(!el) return;
+    const workdays=workdaysInRangeClient(from,to);
+    const trips=(await dbAll("trips")).filter(t=>t.date>=from&&t.date<=to);
+    const rows=VEHICLES.map(v=>{
+          const vTrips=trips.filter(t=>t.vehicle===v.plate);
+          let missingStart=0,missingEnd=0;
+          const dayDetails=workdays.map(ds=>{
+                  const dayTrips=vTrips.filter(t=>t.date===ds);
+                  const started=dayTrips.length>0,ended=dayTrips.some(t=>!isRunningTrip(t));
+                  if(!started) missingStart++; else if(!ended) missingEnd++;
+                  return {date:ds,started,ended};
+          });
+          const owners=vehicleOwnerNames(v.plate)||(v.type==="공용"?"공용 차량":"미지정");
+          const compliant=missingStart===0&&missingEnd===0;
+          return {v,owners,totalDays:workdays.length,missingStart,missingEnd,compliant,dayDetails};
+    });
+    const nonCompliant=rows.filter(x=>!x.compliant);
+    el.innerHTML=`
+      <div class="metrics-grid">
+          <div class="metric-card"><div class="metric-label">조회 대상 차량</div><div class="metric-value">${rows.length}<small>대</small></div><div class="metric-note">${esc(from)} ~ ${esc(to)} · 근무일 ${workdays.length}일</div></div>
+              <div class="metric-card ${nonCompliant.length?"alert":""}"><div class="metric-label">시작·종료 미준수</div><div class="metric-value">${nonCompliant.length}<small>대</small></div><div class="metric-note">근무일 중 하루라도 누락된 차량</div></div>
+                  <div class="metric-card"><div class="metric-label">전체 준수</div><div class="metric-value">${rows.length-nonCompliant.length}<small>대</small></div><div class="metric-note">해당 기간 모두 정상 입력</div></div>
+                      <div class="metric-card"><div class="metric-label">미준수 비율</div><div class="metric-value">${rows.length?Math.round(nonCompliant.length/rows.length*100):0}<small>%</small></div><div class="metric-note">전체 등록 차량 대비</div></div>
+                        </div>
+                          <section class="panel"><div class="panel-head"><div><h2>미준수 차량 (교육 대상)</h2><p class="sub">근무일 중 시작 또는 종료 기록이 1일 이상 누락된 차량입니다. 담당자에게 개별 통보 후 습관화 교육을 진행하세요.</p></div></div>
+                            <div class="tbl-wrap desktop-table"><table><thead><tr><th>차량</th><th>담당자</th><th>부서</th><th>근무일</th><th>시작 누락</th><th>종료 누락</th><th>상태</th></tr></thead><tbody>
+                              ${nonCompliant.map(x=>`<tr><td><b>${esc(x.v.plate)}</b><div class="sub">${esc(x.v.model)}</div></td><td>${esc(x.owners)}</td><td>${esc(x.v.dept||"-")}</td><td>${x.totalDays}일</td><td>${x.missingStart?`<span class="m-due">${x.missingStart}일</span>`:"-"}</td><td>${x.missingEnd?`<span class="m-warn">${x.missingEnd}일</span>`:"-"}</td><td><span class="status-pill due">교육 필요</span></td></tr>`).join("")||"<tr><td colspan=7>미준수 차량이 없습니다. 모두 정상 입력되었습니다.</td></tr>"}
+                                </tbody></table></div></section>
+                                  <section class="panel"><div class="panel-head"><div><h2>전체 차량 현황</h2><p class="sub">등록된 전체 ${rows.length}대 기준입니다.</p></div></div>
+                                    <div class="tbl-wrap desktop-table"><table><thead><tr><th>차량</th><th>담당자</th><th>부서</th><th>근무일</th><th>시작 누락</th><th>종료 누락</th><th>상태</th></tr></thead><tbody>
+                                      ${rows.map(x=>`<tr><td><b>${esc(x.v.plate)}</b><div class="sub">${esc(x.v.model)}</div></td><td>${esc(x.owners)}</td><td>${esc(x.v.dept||"-")}</td><td>${x.totalDays}일</td><td>${x.missingStart?`<span class="m-due">${x.missingStart}일</span>`:"-"}</td><td>${x.missingEnd?`<span class="m-warn">${x.missingEnd}일</span>`:"-"}</td><td>${x.compliant?`<span class="status-pill ok">정상</span>`:`<span class="status-pill due">교육 필요</span>`}</td></tr>`).join("")||"<tr><td colspan=7>등록된 차량이 없습니다.</td></tr>"}
+                                        </tbody></table></div></section>`;
+    window._wRows=rows;window._wRange={from,to};
+}
+  async function dlWeeklyExcel(){
+      const rows=window._wRows,range=window._wRange;
+      if(!rows){ toast("먼저 조회를 실행해 주세요"); return; }
+      const wb=XLSX.utils.book_new();
+      const data=rows.map(x=>({차량번호:x.v.plate,차종:x.v.model,담당자:x.owners,부서:x.v.dept||"",근무일수:x.totalDays,시작누락일수:x.missingStart,종료누락일수:x.missingEnd,준수여부:x.compliant?"정상":"교육 필요"}));
+      const s1=XLSX.utils.json_to_sheet(data);
+      s1["!cols"]=[{wch:11},{wch:14},{wch:12},{wch:16},{wch:9},{wch:11},{wch:11},{wch:10}];
+      XLSX.utils.book_append_sheet(wb,s1,"차량별 현황");
+      const nonCompliant=rows.filter(x=>!x.compliant);
+      const s2=XLSX.utils.json_to_sheet(nonCompliant.map(x=>({차량번호:x.v.plate,담당자:x.owners,부서:x.v.dept||"",시작누락일수:x.missingStart,종료누락일수:x.missingEnd})));
+      s2["!cols"]=[{wch:11},{wch:12},{wch:16},{wch:11},{wch:11}];
+      XLSX.utils.book_append_sheet(wb,s2,"미준수 차량(교육대상)");
+      XLSX.writeFile(wb,`주간운행점검_${range.from.replace(/-/g,"")}_${range.to.replace(/-/g,"")}.xlsx`);
+  }
+  async function aTrips(){
   const trips=(await dbAll("trips")).sort((a,b)=>(b.date+(b.startTime||"")).localeCompare(a.date+(a.startTime||"")));
   const f=window._af||{v:"",u:"",from:"",to:""};
   const users=[...new Set(trips.map(t=>t.user))].sort();
