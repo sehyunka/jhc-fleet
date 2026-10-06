@@ -560,7 +560,7 @@ function startDriveReminderMonitor(){clearInterval(reminderTimer);reminderTimer=
       if(!SESSION||isAdmin()||$(".drive-reminder")) return;
       if(!hasAssignedVehicle()) return;
       const now=new Date();
-      if(!force&&!(now.getDay()===1&&now.getHours()===8)) return;
+      if(!force&&!(now.getDay()>=1&&now.getDay()<=5&&(now.getDay()>1||now.getHours()>=8))) return;
       const {from,to}=prevWeekRange();
       const key=weeklyReportKey(from);if(!force&&localStorage.getItem(key)) return;
       const trips=(await dbAll("trips")).filter(t=>t.uid===SESSION.aid&&t.date>=from&&t.date<=to);
