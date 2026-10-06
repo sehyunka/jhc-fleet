@@ -76,7 +76,7 @@
  var _cwp=window.checkWeeklyPersonalReport;
   window.checkWeeklyPersonalReport=async function(force){
     var n=new Date(); window.__myLeaves=new Set();
-    if(SESSION&&!isAdmin()&&(force||(n.getDay()===1&&n.getHours()===8))){
+    if(SESSION&&!isAdmin()&&(force||(n.getDay()>=1&&n.getDay()<=5&&(n.getDay()>1||n.getHours()>=8)&&!localStorage.getItem(weeklyReportKey(prevWeekRange().from))))){
       (await leaves()).forEach(function(x){ if(x.aid===SESSION.aid) window.__myLeaves.add(x.date); });
     }
     return _cwp(force);
