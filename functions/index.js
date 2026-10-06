@@ -128,14 +128,21 @@ exports.sendWeeklyComplianceReport=onSchedule({schedule:"0 8 * * 1",timeZone:"As
     const thisMonday=mondayOf(date);
     const prevMonday=addDays(thisMonday,-7);
     const prevFriday=addDays(prevMonday,4);
-    const workdays=workdaysInRange(prevMonday,prevFriday,extraSet);
-    if(!workdays.length) return;
+    const allDays=workdaysInRange(prevMonday,prevFriday,extraSet);
+    if(!allDays.length) return;
 
-                                                const [accountsSnap,tripsSnap]=await Promise.all([
+                                                const [accountsSnap,tripsSnap,leaveSnap]=await Promise.all([
                                                       db.collection("accounts").get(),
-                                                      db.collection("trips").where("date",">=",prevMonday).where("date","<=",prevFriday).get()
+                                                      db.collection("trips").where("date",">=",prevMonday).where("date","<=",prevFriday).get(),
+    db.collection("selfHolidayReports").where("date",">=",prevMonday).where("date","<=",prevFriday).get()
                                                     ]);
-    const tripsByUid=new Map();
+    const leavesByUid=new Map();
+  leaveSnap.docs.forEach(doc=>{
+    const l=doc.data(); if(!l.aid) return;
+    if(!leavesByUid.has(l.aid)) leavesByUid.set(l.aid,new Set());
+    leavesByUid.get(l.aid).add(l.date);
+  });
+  const tripsByUid=new Map();
     tripsSnap.docs.forEach(doc=>{
           const t=doc.data(); if(!t.uid) return;
           if(!tripsByUid.has(t.uid)) tripsByUid.set(t.uid,[]);
@@ -151,6 +158,9 @@ exports.sendWeeklyComplianceReport=onSchedule({schedule:"0 8 * * 1",timeZone:"As
                                                       if((await deliveryRef.get()).exists) continue;
 
       const myTrips=tripsByUid.get(accDoc.id)||[];
+    const myLeaves=leavesByUid.get(accDoc.id)||new Set();
+    const workdays=allDays.filter(ds=>!(myLeaves.has(ds)&&!myTrips.some(t=>t.date===ds)));
+    if(!workdays.length) continue; // 주간 전체가 휴가면 알림 생략
                                                       let successDays=0,failDays=0;
                                                       const details=[];
                                                       for(const ds of workdays){
