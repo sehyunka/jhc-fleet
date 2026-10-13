@@ -213,6 +213,26 @@ try{
     useFB=true;
   }
 }catch(e){ console.warn("Firebase 초기화 실패 → 기기저장 모드", e); }
+/* ═══════════ Cloud Functions 호출 (직원 로그인·비밀번호) ═══════════ */
+const FN_BASE=`https://asia-northeast3-${(window.FIREBASE_CONFIG||{}).projectId||"jhc-fleet"}.cloudfunctions.net/`;
+let MY_PW_STATUS="";
+const PW_RULE_MSG="새 비밀번호는 영문과 숫자를 모두 포함해 8자 이상이어야 하며 특수문자는 사용할 수 없습니다";
+async function callFn(name,data,opts={}){
+  const headers={"Content-Type":"application/json"};
+  if(opts.auth){
+    if(!fauth?.currentUser) throw new Error("다시 로그인해 주세요");
+    headers.Authorization="Bearer "+await fauth.currentUser.getIdToken();
+  }
+  let res,body={};
+  try{ res=await fetch(FN_BASE+name,{method:"POST",headers,body:JSON.stringify({data})}); }
+  catch(e){ throw new Error("서버에 연결할 수 없습니다. 네트워크를 확인해 주세요"); }
+  try{ body=await res.json(); }catch(e){ body={}; }
+  if(!res.ok||body.error){
+    const err=new Error(body.error?.message||"요청을 처리하지 못했습니다");
+    err.code=body.error?.status||""; err.details=body.error?.details; throw err;
+  }
+  return body.result;
+}
 function pushTokenDocId(token){ return token.replace(/[^a-zA-Z0-9_-]/g,"_"); }
 async function registerPushToken(){
   if(!useFB||!SESSION||isAdmin()||!("Notification" in window)||Notification.permission!=="granted"||!firebase.messaging) return false;
@@ -298,7 +318,7 @@ const LS={
 };
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const DATA_CACHE=new Map();
-const DATA_CACHE_TTL={vehicles:60000,accounts:60000,trips:4000,maintenance:30000,notices:30000,adminAccess:60000,auditLogs:4000};
+const DATA_CACHE_TTL={vehicles:60000,accounts:60000,trips:4000,users:60000,maintenance:30000,notices:30000,adminAccess:60000,auditLogs:4000};
 function invalidateDataCache(...cols){ for(const col of cols) DATA_CACHE.delete(col); }
 async function dbAll(col){
   if(useFB){
@@ -337,6 +357,7 @@ async function saveSettings(s){
 let VEHICLES=[],ACCOUNTS=[],SETTINGS={},CORE_LOADED_AT=0;
 async function ensureSeed(){
   let st=await getSettings();
+  if(useFB&&!isAdmin()){ SETTINGS=st||SETTINGS; return; }
   if(!st||st.seedV!==2){
     // 구버전 데이터 정리 후 v2 시드
     for(const col of ["vehicles","users","accounts"]){
@@ -344,7 +365,7 @@ async function ensureSeed(){
     }
     for(const v of SEED_VEHICLES) await dbAdd("vehicles",{...v,active:true});
     for(const dept of Object.keys(SEED_ORG)) for(const name of SEED_ORG[dept])
-      await dbAdd("accounts",{name,dept,userId:name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:SEED_VMAP[name]||"",sharedVehicleAccess:["가세현","이재일","신용희"].includes(name)});
+      await dbAdd("accounts",{name,dept,userId:name,...(useFB?{}:{pw:INITIAL_EMPLOYEE_PASSWORD}),pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:SEED_VMAP[name]||"",sharedVehicleAccess:["가세현","이재일","신용희"].includes(name)});
     st=Object.assign({extraHolidays:"",seedV:2},st||{});
     st.seedV=2; await saveSettings(st);
   }
@@ -357,7 +378,7 @@ async function ensureRequiredAccounts(){
   for(const required of REQUIRED_ACCOUNTS){
     const existing=current.find(a=>a.name===required.name||a.userId===required.name);
     if(!existing){
-      const account={name:required.name,dept:required.dept,title:required.title,userId:required.name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:"",vehicles:[],sharedVehicleAccess:true};
+      const account={name:required.name,dept:required.dept,title:required.title,userId:required.name,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2,vehicle:"",vehicles:[],sharedVehicleAccess:true};
       await auditedMutation({operation:"create",collection:"accounts",before:null,after:account,reason:"전체 조직도 누락 계정 보정 · 공용차량 이용 권한 부여",label:required.name});
       current.push(account); changed++;
     }else{
@@ -375,10 +396,37 @@ async function ensureRequiredAccounts(){
 }
 async function loadCore(force=false){
   if(!force&&VEHICLES.length&&ACCOUNTS.length&&Date.now()-CORE_LOADED_AT<60000) return;
-  const [vehicles,accounts,settings]=await Promise.all([dbAll("vehicles"),dbAll("accounts"),getSettings()]);
+  // 직원은 비밀번호 정보가 없는 users(표시용 사본)만 읽고, 관리자는 accounts 원본을 읽습니다.
+  const accountsCol=(useFB&&!isAdmin())?"users":"accounts";
+  const [vehicles,accounts,settings]=await Promise.all([dbAll("vehicles"),dbAll(accountsCol),getSettings()]);
   VEHICLES=vehicles.filter(v=>v.active!==false).sort((a,b)=>(a.dept||"").localeCompare(b.dept||"")||a.plate.localeCompare(b.plate));
-  ACCOUNTS=accounts.sort((a,b)=>a.dept.localeCompare(b.dept)||a.name.localeCompare(b.name));
+  ACCOUNTS=accounts.sort((a,b)=>(a.dept||"").localeCompare(b.dept||"")||(a.name||"").localeCompare(b.name||""));
   SETTINGS=settings||SETTINGS; CORE_LOADED_AT=Date.now();
+  if(useFB&&isAdmin()) syncUsersMirror(accounts).catch(e=>console.warn("users 사본 동기화 실패",e));
+}
+function userMirrorDoc(a){
+  const vehicles=accountVehiclePlates(a);
+  return {name:a.name||"",dept:a.dept||"",title:a.title||"",vehicle:vehicles[0]||"",vehicles,sharedVehicleAccess:a.sharedVehicleAccess===true};
+}
+const stableJson=o=>JSON.stringify(o,Object.keys(o).sort());
+let USERS_MIRROR_SIG="";
+async function syncUsersMirror(accounts){
+  if(!useFB||!isAdmin()) return;
+  const want=new Map(accounts.map(a=>[a.id,userMirrorDoc(a)]));
+  const sig=JSON.stringify([...want.entries()].sort((x,y)=>x[0].localeCompare(y[0])));
+  if(sig===USERS_MIRROR_SIG) return;
+  const snap=await fdb.collection("users").get(),have=new Map(snap.docs.map(d=>[d.id,d.data()])),ops=[];
+  for(const [id,doc] of want) if(!have.has(id)||stableJson(have.get(id))!==stableJson(doc)) ops.push(["set",id,doc]);
+  for(const id of have.keys()) if(!want.has(id)) ops.push(["del",id]);
+  for(let i=0;i<ops.length;i+=400){
+    const batch=fdb.batch();
+    for(const [kind,id,doc] of ops.slice(i,i+400)){
+      const ref=fdb.collection("users").doc(id);
+      if(kind==="set") batch.set(ref,doc); else batch.delete(ref);
+    }
+    await batch.commit();
+  }
+  USERS_MIRROR_SIG=sig; invalidateDataCache("users");
 }
 
 /* ═══════════ 유틸 ═══════════ */
@@ -509,7 +557,7 @@ function startDriveReminderMonitor(){clearInterval(reminderTimer);reminderTimer=
       localStorage.setItem(holidaySelfReportKey(),new Date().toISOString());
       if(useFB&&fdb&&SESSION){
             try{
-                    await fdb.collection("selfHolidayReports").doc(`${SESSION.aid}_${todayStr()}`).set({aid:SESSION.aid,name:SESSION.name,dept:SESSION.dept,date:todayStr(),reportedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+                    await fdb.collection("selfHolidayReports").doc(`${SESSION.aid}_${todayStr()}`).set({aid:SESSION.aid,name:SESSION.name,dept:SESSION.dept,date:todayStr(),reportedAt:firebase.firestore.FieldValue.serverTimestamp(),kind:"leave",by:"self"},{merge:true});
             }catch(e){ console.warn("휴일 신고 저장 실패",e); }
       }
       closeModal();
@@ -573,7 +621,7 @@ function startDriveReminderMonitor(){clearInterval(reminderTimer);reminderTimer=
   
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt=n=>n==null||n===""?"-":Number(n).toLocaleString();
-function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",2500);}
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",Math.max(2500,Math.min(8000,String(m).length*110)));}
 function modal(html){$("#modal-root").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">'+html+'</div></div>';}
 function closeModal(){$("#modal-root").innerHTML="";}
 async function vehicleTrips(plate){
@@ -586,8 +634,9 @@ function openTrip(trips){ return trips.filter(isRunningTrip).sort((a,b)=>(b.date
 
 /* ═══════════ 세션 · 로그인 ═══════════ */
 let SESSION=null;
-function saveSession(){ localStorage.setItem("jhc2_sess",JSON.stringify(SESSION)); }
-function loadSession(){ try{SESSION=JSON.parse(localStorage.getItem("jhc2_sess"))}catch(e){SESSION=null} }
+// Firebase 모드의 세션은 Firebase Auth(사용자 지정 토큰/Google)가 유지합니다. 기기 저장 모드에서만 localStorage를 씁니다.
+function saveSession(){ if(!useFB) localStorage.setItem("jhc2_sess",JSON.stringify(SESSION)); }
+function loadSession(){ if(useFB){ SESSION=null; return; } try{SESSION=JSON.parse(localStorage.getItem("jhc2_sess"))}catch(e){SESSION=null} }
 function normalizedEmail(value){ return String(value||"").trim().toLowerCase(); }
 function isAdmin(){
   const user=fauth?.currentUser,email=normalizedEmail(user?.email);
@@ -602,7 +651,7 @@ function accountVehiclePlates(account){
 }
 function userSession(acc){
   const vehicles=accountVehiclePlates(acc);
-  return {aid:acc.id,name:acc.name,dept:acc.dept,role:"user",vehicle:vehicles[0]||"",vehicles,sharedVehicleAccess:acc.sharedVehicleAccess===true};
+  return {aid:acc.id||acc.aid,name:acc.name,dept:acc.dept,role:"user",vehicle:vehicles[0]||"",vehicles,sharedVehicleAccess:acc.sharedVehicleAccess===true};
 }
 function canUseSharedVehicles(account){ return account?.sharedVehicleAccess===true; }
 function vehicleOwners(plate){ return ACCOUNTS.filter(a=>accountVehiclePlates(a).includes(plate)); }
@@ -658,11 +707,12 @@ function accountPasswordState(account){
 }
   function initialPasswordGateNeeded(){
     if(!SESSION||isAdmin()) return false;
+    if(useFB) return MY_PW_STATUS!=="changed";
     const acc=ACCOUNTS.find(a=>a.id===SESSION.aid);
     return !!acc&&accountPasswordState(acc)==="initial";
   }
 function validNewPassword(value){
-  return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/.test(value);
+  return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,64}$/.test(value);
 }
 function auditSafe(value){
   if(value==null||typeof value!=="object") return value;
@@ -749,20 +799,53 @@ function renderLogin(msg){
     <button class="btn" style="background:var(--navy)" onclick="requestLogin()">직원 로그인</button>
     <button class="btn sec admin-login" onclick="requestAdminGoogleLogin()">Google 관리자 로그인</button>
     <p class="field-help" style="text-align:center">관리자는 등록된 본인 Google 계정으로만 접속할 수 있습니다.</p>
-    <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>직원 초기 PW = ${INITIAL_EMPLOYEE_PASSWORD}</div>
+    <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>직원 ID는 이름이며, 초기 비밀번호는 총무부 안내를 확인하세요.</div>
   </div>`;
 }
+let loginBusy=false;
 async function doLogin(){
+  if(loginBusy) return;
   const id=normalizeCredential($("#liId").value,true), pw=normalizeCredential($("#liPw").value,true);
   if(!id||!pw) return toast("ID와 PW를 입력하세요");
-  await ensureSeed(); await loadCore();
   if($("#liSave").checked) localStorage.setItem("jhc2_saveid",id); else localStorage.removeItem("jhc2_saveid");
-  const acc=ACCOUNTS.find(a=>normalizeCredential(a.userId,true)===id&&passwordMatches(a,pw));
-  if(!acc) return toast("ID 또는 비밀번호가 올바르지 않습니다");
-  if(fauth?.currentUser) await fauth.signOut();
-  seenNotices.clear();
-  SESSION=userSession(acc);
-  saveSession(); enterApp(true);
+  loginBusy=true;
+  try{
+    if(!useFB){
+      await ensureSeed(); await loadCore();
+      const acc=ACCOUNTS.find(a=>normalizeCredential(a.userId,true)===id&&passwordMatches(a,pw));
+      if(!acc) return toast("ID 또는 비밀번호가 올바르지 않습니다");
+      seenNotices.clear(); SESSION=userSession(acc); saveSession(); enterApp(true); return;
+    }
+    let result;
+    try{ result=await callFn("employeeLogin",{userId:id,pw}); }
+    catch(e){ return toast(e.message||"로그인하지 못했습니다"); }
+    resetClientData();
+    await fauth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    await fauth.signInWithCustomToken(result.token);
+    seenNotices.clear();
+    SESSION=userSession({id:result.profile.aid,...result.profile});
+    MY_PW_STATUS=result.profile.passwordStatus==="changed"?"changed":"initial";
+    try{ await loadCore(true); }catch(e){ console.warn(e); }
+    enterApp(true);
+  }catch(e){
+    console.warn(e); toast("로그인 중 오류가 발생했습니다. 잠시 후 다시 시도하세요");
+  }finally{ loginBusy=false; }
+}
+function resetClientData(){
+  DATA_CACHE.clear(); CORE_LOADED_AT=0; ACCOUNTS=[]; VEHICLES=[]; USERS_MIRROR_SIG="";
+}
+async function restoreEmployeeSession(){
+  const user=fauth?.currentUser;
+  if(!user) return false;
+  try{
+    const token=await user.getIdTokenResult(),aid=token.claims.aid;
+    if(token.claims.role!=="employee"||!aid) return false;
+    const [u,st]=await Promise.all([fdb.collection("users").doc(aid).get(),fdb.collection("accountStatus").doc(aid).get()]);
+    if(!u.exists) return false;
+    SESSION=userSession({id:aid,...u.data()});
+    MY_PW_STATUS=st.exists&&st.data().passwordStatus==="changed"?"changed":"initial";
+    return true;
+  }catch(e){ console.warn("직원 세션 복원 실패",e); return false; }
 }
 async function adminProfileForUser(user){
   const email=normalizedEmail(user?.email);
@@ -798,7 +881,8 @@ async function requestAdminGoogleLogin(){
     const result=await fauth.signInWithPopup(provider),profile=await adminProfileForUser(result.user);
     if(!profile){ await fauth.signOut(); return toast("관리자로 등록되지 않은 Google 계정입니다"); }
     SESSION=createAdminSession(result.user,profile);
-    await ensureSeed(); await loadCore(); await ensureRequiredAccounts(); await loadCore();
+    resetClientData();
+    await ensureSeed(); await loadCore(); await ensureRequiredAccounts(); await loadCore(true);
     seenNotices.clear(); aTab="status"; fleetStatusFilter="running";
     saveSession();
     try{ await cleanupLegacyAdminCredentials(); }catch(e){ console.warn("기존 관리자 인증정보 정리 실패",e); }
@@ -823,7 +907,7 @@ async function logout(){
   pushGatePassed=false;pushGateBusy=false;pushGateWentBackground=false;
   if(notificationPermissionWatcher) notificationPermissionWatcher.onchange=null;
   notificationPermissionWatcher=null;document.body.classList.remove("push-gated");
-  seenNotices.clear(); SESSION=null; localStorage.removeItem("jhc2_sess");
+  seenNotices.clear(); SESSION=null; MY_PW_STATUS=""; resetClientData(); localStorage.removeItem("jhc2_sess");
   if(fauth?.currentUser){ try{await fauth.signOut();}catch(e){console.warn(e);} }
   renderLogin();
 }
@@ -1353,34 +1437,51 @@ async function vMy(){
   <div class="card"><h2>비밀번호 변경</h2>
     <label>현재 비밀번호</label><input type="password" id="cpw">
     <label>새 비밀번호</label><input type="password" id="npw" autocomplete="new-password" inputmode="text">
-    <p class="field-warning">영문과 숫자를 각각 1개 이상 포함해 6자리 이상 입력하세요. 특수문자는 사용할 수 없으며 영문 대·소문자는 동일하게 인식됩니다.</p>
+    <p class="field-warning">영문과 숫자를 각각 1개 이상 포함해 8자리 이상 입력하세요. 특수문자는 사용할 수 없으며 영문 대·소문자는 구분됩니다.</p>
     <button class="btn sm" onclick="chMyPw()">변경</button></div>
   <button class="btn red" onclick="logout()">로그아웃</button>`;
 }
 async function chMyPw(){
+  const cur=($("#cpw").value||"").trim(),p=($("#npw").value||"").trim();
+  if(!cur) return toast("현재 비밀번호를 입력하세요");
+  if(!validNewPassword(p)) return toast(PW_RULE_MSG);
+  if(useFB){
+    try{
+      await callFn("changePassword",{current:normalizeCredential(cur,true),next:p},{auth:true});
+      MY_PW_STATUS="changed"; $("#cpw").value=""; $("#npw").value="";
+      toast("비밀번호가 변경되었습니다. 영문 대·소문자는 구분됩니다");
+    }catch(e){ toast(e.message||"비밀번호를 변경하지 못했습니다"); }
+    return;
+  }
   const acc=ACCOUNTS.find(a=>a.id===SESSION.aid);
   if(!acc) return toast("계정 오류");
-  if(!passwordMatches(acc,$("#cpw").value)) return toast("현재 비밀번호가 틀립니다");
-  const p=$("#npw").value.trim();
-  if(!validNewPassword(p)) return toast("새 비밀번호는 영문+숫자 6자리 이상이어야 하며 특수문자는 사용할 수 없습니다");
-  await dbUpd("accounts",acc.id,{pw:p.toLowerCase(),pwCaseInsensitive:true,passwordStatus:"changed"});
-  toast("비밀번호가 변경되었습니다. 영문 대·소문자는 동일하게 인식됩니다");
+  if(!passwordMatches(acc,cur)) return toast("현재 비밀번호가 틀립니다");
+  await dbUpd("accounts",acc.id,{pw:p,pwCaseInsensitive:false,passwordStatus:"changed"});
+  toast("비밀번호가 변경되었습니다");
 }
 
   function openInitialPasswordGate(){
-    $("#modal-root").innerHTML=`<div class="modal-bg"><div class="modal"><h3>🔒 초기 비밀번호 변경이 필요합니다</h3><p class="sub">보안을 위해 초기 비밀번호(${esc(INITIAL_EMPLOYEE_PASSWORD)})를 계속 사용할 수 없습니다. 새 비밀번호를 설정해야 앱을 계속 이용할 수 있습니다.</p><label>새 비밀번호</label><input type="password" id="ipw1" autocomplete="new-password" inputmode="text"><label>새 비밀번호 확인</label><input type="password" id="ipw2" autocomplete="new-password" inputmode="text"><p class="field-warning">영문과 숫자를 각각 1개 이상 포함해 6자리 이상 입력하세요. 특수문자는 사용할 수 없으며 영문 대·소문자는 동일하게 인식됩니다.</p><button class="btn" onclick="submitInitialPasswordChange()">비밀번호 변경하고 계속하기</button></div></div>`;
+    $("#modal-root").innerHTML=`<div class="modal-bg"><div class="modal"><h3>🔒 비밀번호 변경이 필요합니다</h3><p class="sub">보안 강화로 지금 사용 중인 비밀번호를 계속 사용할 수 없습니다. 새 비밀번호를 설정해야 앱을 계속 이용할 수 있습니다.</p><label>현재 비밀번호</label><input type="password" id="ipw0" autocomplete="current-password" inputmode="text"><label>새 비밀번호</label><input type="password" id="ipw1" autocomplete="new-password" inputmode="text"><label>새 비밀번호 확인</label><input type="password" id="ipw2" autocomplete="new-password" inputmode="text"><p class="field-warning">영문과 숫자를 각각 1개 이상 포함해 8자리 이상 입력하세요. 특수문자는 사용할 수 없으며 영문 대·소문자는 구분됩니다. 초기 비밀번호와 ID는 사용할 수 없습니다.</p><button class="btn" onclick="submitInitialPasswordChange()">비밀번호 변경하고 계속하기</button></div></div>`;
   }
 
 async function submitInitialPasswordChange(){
-  const acc=ACCOUNTS.find(a=>a.id===SESSION.aid);
-  if(!acc) return toast("계정 오류");
-  const p1=($("#ipw1").value||"").trim(),p2=($("#ipw2").value||"").trim();
-  if(!validNewPassword(p1)) return toast("새 비밀번호는 영문+숫자 6자리 이상이어야 하며 특수문자는 사용할 수 없습니다");
+  const cur=($("#ipw0").value||"").trim(),p1=($("#ipw1").value||"").trim(),p2=($("#ipw2").value||"").trim();
+  if(!cur) return toast("현재 비밀번호를 입력하세요");
+  if(!validNewPassword(p1)) return toast(PW_RULE_MSG);
   if(p1!==p2) return toast("새 비밀번호가 일치하지 않습니다");
-  await dbUpd("accounts",acc.id,{pw:p1.toLowerCase(),pwCaseInsensitive:true,passwordStatus:"changed"});
-  await loadCore(true);
+  if(useFB){
+    try{ await callFn("changePassword",{current:normalizeCredential(cur,true),next:p1},{auth:true}); }
+    catch(e){ return toast(e.message||"비밀번호를 변경하지 못했습니다"); }
+    MY_PW_STATUS="changed";
+  }else{
+    const acc=ACCOUNTS.find(a=>a.id===SESSION.aid);
+    if(!acc) return toast("계정 오류");
+    if(!passwordMatches(acc,cur)) return toast("현재 비밀번호가 틀립니다");
+    await dbUpd("accounts",acc.id,{pw:p1,pwCaseInsensitive:false,passwordStatus:"changed"});
+    await loadCore(true);
+  }
   closeModal();
-  toast("비밀번호가 변경되었습니다. 영문 대·소문자는 동일하게 인식됩니다");
+  toast("비밀번호가 변경되었습니다. 영문 대·소문자는 구분됩니다");
 }
   /* ═══════════ 관리자 ═══════════ */
 let aTab="status", fleetStatusFilter="running";
@@ -1680,9 +1781,9 @@ async function delVeh(id){
   closeModal(); toast("차량 삭제(비활성) 처리됨"); nav("admin");
 }
 async function aAcc(){
-  const legacyCount=ACCOUNTS.filter(isLegacyInitialPassword).length,changedCount=ACCOUNTS.filter(a=>accountPasswordState(a)==="changed").length;
-  $("#aBody").innerHTML=`<div class="card"><div class="btn-row"><button class="btn sm grn" onclick="accForm()">＋ 계정 추가</button><button class="btn sm" onclick="bulkInitialPwForm()" ${legacyCount?"":"disabled"}>초기 PW 1234 일괄 적용 (${legacyCount}명)</button></div>
-  <p class="sub" style="margin-top:6px">초기 계정: ID=이름 · PW=${INITIAL_EMPLOYEE_PASSWORD} · 기존 PW가 이름인 ${legacyCount}명만 일괄 변경 대상 · 비밀번호 변경 완료 ${changedCount}명 제외 · 지정 차량은 계정별 최대 ${MAX_ASSIGNED_VEHICLES}대 · 공용차량은 계정별 이용 권한을 별도로 설정</p></div>
+  const changedCount=ACCOUNTS.filter(a=>accountPasswordState(a)==="changed").length;
+  $("#aBody").innerHTML=`<div class="card"><div class="btn-row"><button class="btn sm grn" onclick="accForm()">＋ 계정 추가</button></div>
+  <p class="sub" style="margin-top:6px">초기 계정: ID=이름 · 비밀번호는 서버에 암호화 저장되며 관리자도 볼 수 없습니다 · 비밀번호 변경 완료 ${changedCount}명 · 지정 차량은 계정별 최대 ${MAX_ASSIGNED_VEHICLES}대 · 공용차량은 계정별 이용 권한을 별도로 설정</p></div>
   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>이름</th><th>ID</th><th>부서</th><th>PW 상태</th><th>지정차량</th><th>공용차량</th><th></th><th></th><th></th></tr></thead><tbody>
   ${ACCOUNTS.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.userId)}</td><td>${esc(a.dept)}</td><td>${accountPasswordState(a)==="changed"?`<span class="tag prv">변경완료</span>`:`<span class="tag pub">초기 PW</span>`}</td><td>${accountVehiclePlates(a).length?accountVehiclePlates(a).map(esc).join("<br>"):"-"}</td><td>${canUseSharedVehicles(a)?`<span class="tag pub">이용 가능</span>`:"-"}</td>
   <td><button class="btn sm sec" onclick="accForm('${a.id}')">수정</button></td>
@@ -1763,7 +1864,8 @@ async function saveAcc(id){
   const before=id?liveAccounts.find(a=>a.id===id):null,reason=id?$("#aReason").value.trim():"신규 계정 등록";
   if(id&&!before) return toast("계정을 찾을 수 없습니다");
   if(id&&!reason) return toast("변경 사유를 입력하세요");
-  if(!id){ o.pw=($("#aP").value||INITIAL_EMPLOYEE_PASSWORD); o.pwCaseInsensitive=false; o.passwordStatus="initial"; o.initialPasswordVersion=2; }
+  const initialPw=id?"":($("#aP")?.value||INITIAL_EMPLOYEE_PASSWORD);
+  if(!id){ if(!useFB) o.pw=initialPw; o.pwCaseInsensitive=false; o.passwordStatus="initial"; o.initialPasswordVersion=2; }
   const ownerUpdates=liveAccounts.filter(owner=>owner.id!==id&&accountVehiclePlates(owner).some(plate=>vehicles.includes(plate))).map(owner=>{
     const moved=accountVehiclePlates(owner).filter(plate=>vehicles.includes(plate)),remaining=accountVehiclePlates(owner).filter(plate=>!vehicles.includes(plate));
     return {owner,moved,patch:{vehicle:remaining[0]||"",vehicles:remaining}};
@@ -1785,27 +1887,38 @@ async function saveAcc(id){
     const targetAfter=id?{...before,...o}:o,targetLogRef=fdb.collection("auditLogs").doc();
     batch.set(targetLogRef,{...auditRecord({operation:id?"update":"create",collection:"accounts",targetId:targetRef.id,label:name,before,after:targetAfter,reason}),serverAt:firebase.firestore.FieldValue.serverTimestamp()});
     await batch.commit();
+    invalidateDataCache("accounts","auditLogs"); CORE_LOADED_AT=0;
+    if(!id){
+      try{ await callFn("adminSetPassword",{aids:[targetRef.id],password:initialPw,reason:"신규 계정 초기 비밀번호 설정",operatorName:SESSION.operatorName||""},{auth:true}); }
+      catch(e){ toast("계정은 저장됐지만 초기 비밀번호 설정에 실패했습니다: "+e.message); }
+    }
   }else{
     for(const item of ownerUpdates) await auditedMutation({operation:"update",collection:"accounts",id:item.owner.id,before:item.owner,after:item.patch,reason:`${reason} · ${item.moved.join(", ")} 차량을 ${name}에게 이전`,label:item.owner.name});
     await auditedMutation({operation:id?"update":"create",collection:"accounts",id:id||undefined,before,after:o,reason,label:name});
   }
-  await loadCore(); closeModal(); toast(ownerUpdates.length?"차량 이전 및 계정 저장 완료":"저장됨"); nav("admin");
+  await loadCore(true); closeModal(); toast(ownerUpdates.length?"차량 이전 및 계정 저장 완료":"저장됨"); nav("admin");
 }
 function resetPwForm(id){
   const a=ACCOUNTS.find(x=>x.id===id); if(!a) return toast("계정을 찾을 수 없습니다");
-  modal(`<h3>비밀번호 초기화</h3><div class="banner warn">${esc(a.name)} 계정의 ID를 이름으로, 초기 비밀번호를 ${INITIAL_EMPLOYEE_PASSWORD}로 설정합니다.</div><label>초기화 사유 <span class="required">필수</span></label><textarea id="rpReason" rows="3"></textarea><button class="btn" onclick="resetPw('${id}')">초기화 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
+  modal(`<h3>비밀번호 초기화</h3><div class="banner warn">${esc(a.name)} 계정의 비밀번호를 초기 비밀번호(${INITIAL_EMPLOYEE_PASSWORD})로 초기화합니다. 다음 로그인 시 비밀번호를 다시 변경해야 합니다.</div><label>초기화 사유 <span class="required">필수</span></label><textarea id="rpReason" rows="3"></textarea><button class="btn" onclick="resetPw('${id}')">초기화 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
 }
 async function resetPw(id){
   const before=ACCOUNTS.find(a=>a.id===id),reason=$("#rpReason")?.value.trim(); if(!before) return toast("계정을 찾을 수 없습니다"); if(!reason) return toast("초기화 사유를 입력하세요");
-  await auditedMutation({operation:"update",collection:"accounts",id,before,after:{userId:before.name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2},reason,label:before.name});
-  closeModal(); toast(`ID=${before.name} · PW=${INITIAL_EMPLOYEE_PASSWORD}로 초기화됨`); nav("admin");
+  if(useFB){
+    try{ await callFn("adminSetPassword",{aids:[id],reason,operatorName:SESSION.operatorName||""},{auth:true}); }
+    catch(e){ return toast(e.message||"비밀번호를 초기화하지 못했습니다"); }
+    invalidateDataCache("accounts","auditLogs"); CORE_LOADED_AT=0;
+  }else await auditedMutation({operation:"update",collection:"accounts",id,before,after:{userId:before.name,pw:INITIAL_EMPLOYEE_PASSWORD,pwCaseInsensitive:false,passwordStatus:"initial",initialPasswordVersion:2},reason,label:before.name});
+  closeModal(); toast(`${before.name} 비밀번호가 초기화되었습니다`); nav("admin");
 }
 function bulkInitialPwForm(){
+  return toast("보안 강화로 일괄 초기화 기능은 중단되었습니다. 계정별 '비밀번호 초기화'를 사용하세요");
   const targets=ACCOUNTS.filter(isLegacyInitialPassword),excluded=ACCOUNTS.length-targets.length;
   if(!targets.length) return toast("이름 비밀번호를 유지하는 계정이 없습니다");
   modal(`<h3>초기 비밀번호 1234 일괄 적용</h3><div class="banner warn">현재 PW가 본인 이름과 동일한 <b>${targets.length}명</b>만 ID=이름, PW=${INITIAL_EMPLOYEE_PASSWORD}로 변경합니다.<br>이미 비밀번호를 변경한 ${excluded}명은 제외됩니다.</div><label>변경 사유 <span class="required">필수</span></label><textarea id="bpReason" rows="3">초기 비밀번호 정책 변경 (이름 → ${INITIAL_EMPLOYEE_PASSWORD})</textarea><button class="btn" onclick="bulkInitialPw1234()">${targets.length}명 변경 실행</button><button class="btn sec" onclick="closeModal()">취소</button>`);
 }
 async function bulkInitialPw1234(){
+  return toast("보안 강화로 일괄 초기화 기능은 중단되었습니다");
   if(!isAdmin()) return toast("관리자만 실행할 수 있습니다");
   const reason=$("#bpReason")?.value.trim(); if(!reason) return toast("변경 사유를 입력하세요");
   const current=await dbAll("accounts"),targets=current.filter(isLegacyInitialPassword);
@@ -2057,22 +2170,29 @@ async function waitForAuthReady(){
   });
 }
 (async function(){
-  try{ await ensureSeed(); await loadCore(); }catch(e){ console.warn(e); }
-  loadSession();
+  if(useFB){ try{ localStorage.removeItem("jhc2_sess"); }catch(e){} }
+  else{ try{ await ensureSeed(); await loadCore(); }catch(e){ console.warn(e); } loadSession(); }
   await waitForAuthReady();
-  if(SESSION?.role==="admin"){
+  const user=useFB?fauth.currentUser:null;
+  if(!useFB){
+    if(SESSION) enterApp(true); else renderLogin();
+  }else if(user&&user.email){
     if(await restoreAdminSession()){
-      try{ await ensureRequiredAccounts(); await loadCore(); }catch(e){ console.warn("필수 사용자 계정 보정 실패",e); }
+      try{ await ensureSeed(); await loadCore(true); await ensureRequiredAccounts(); await loadCore(true); }catch(e){ console.warn("필수 사용자 계정 보정 실패",e); }
       try{ await cleanupLegacyAdminCredentials(); }catch(e){ console.warn("기존 관리자 인증정보 정리 실패",e); }
       enterApp(true);
     }else{
-      SESSION=null; localStorage.removeItem("jhc2_sess"); renderLogin("관리자 인증이 만료되었습니다. Google 계정으로 다시 로그인하세요.");
+      SESSION=null; renderLogin("관리자 인증이 만료되었습니다. Google 계정으로 다시 로그인하세요.");
     }
-  }else if(SESSION){
-    if(fauth?.currentUser) try{await fauth.signOut();}catch(e){console.warn(e);}
-    enterApp(true);
+  }else if(user){
+    if(await restoreEmployeeSession()){
+      try{ await loadCore(true); }catch(e){ console.warn(e); }
+      if(syncSessionAccount()) enterApp(true);
+    }else{
+      try{await fauth.signOut();}catch(e){console.warn(e);}
+      SESSION=null; renderLogin("다시 로그인해 주세요.");
+    }
   }else{
-    if(fauth?.currentUser) try{await fauth.signOut();}catch(e){console.warn(e);}
     renderLogin();
   }
   if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(reg=>serviceWorkerRegistration=reg).catch(()=>{});
