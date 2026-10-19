@@ -184,3 +184,9 @@ exports.sendWeeklyComplianceReport=onSchedule({schedule:"0 8 * * 1",timeZone:"As
                                                       await deliveryRef.set({aid:accDoc.id,name:account.name,dept:account.dept,weekFrom:prevMonday,weekTo:prevFriday,totalDays:workdays.length,successDays,failDays,pushed:true,successCount,failureCount,createdAt:FieldValue.serverTimestamp()});
                                                 }
 });
+
+/* 직원 로그인·비밀번호 (auth.js) */
+const employeeAuth = require("./auth");
+exports.employeeLogin = employeeAuth.employeeLogin;
+exports.changePassword = employeeAuth.changePassword;
+exports.adminSetPassword = employeeAuth.adminSetPassword;
