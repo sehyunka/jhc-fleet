@@ -1,4 +1,4 @@
-const CACHE = 'jhc-fleet-command-v27-version-label';
+const CACHE = 'jhc-fleet-command-v28-fresh-html';
 const ASSETS = ['./', './index.html', './book-format.js', './manifest.json', './firebase-config.js', './icon-192.png', './icon-512.png', './logo-h.png', './fleet-login-bg.png'];
 
 self.addEventListener('install', e => {
@@ -15,8 +15,13 @@ self.addEventListener('activate', e => {
 // 네트워크 우선, 실패 시 캐시 (항상 최신 버전 우선
 self.addEventListener('fetch', e => {
     if (e.request.method !== 'GET') return;
+    // 앱 화면(HTML)·스크립트는 브라우저 HTTP 캐시를 건너뛰고 서버에 최신 여부를 확인합니다(배포 즉시 반영).
+    const url = new URL(e.request.url);
+    const fresh = url.origin === self.location.origin
+      && (e.request.mode === 'navigate' || /\.(html|js)$/.test(url.pathname) || url.pathname.endsWith('/'));
+    const req = fresh ? fetch(url.href, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(e.request);
     e.respondWith(
-          fetch(e.request).then(res => {
+          req.then(res => {
                   const copy = res.clone();
                   caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
                   return res;
