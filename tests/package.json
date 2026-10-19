@@ -1,0 +1,14 @@
+{
+  "name": "jhc-fleet-tests",
+  "private": true,
+  "scripts": {
+    "test:pw": "node pwlib.test.js",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-jhc \"node rules.test.js\" --config ../firebase.json",
+    "test": "npm run test:pw && npm run test:rules"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.0.0",
+    "firebase-tools": "^14.0.0"
+  }
+}
