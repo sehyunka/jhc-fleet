@@ -197,6 +197,8 @@ const MAINT_ITEMS=[
 {name:"미션오일",km:80000,mo:0},{name:"냉각수",km:40000,mo:24},{name:"배터리",km:60000,mo:36}];
 const COMPANY="재현하늘창";
 const INITIAL_EMPLOYEE_PASSWORD="1234";
+const APP_VERSION="v3.1", APP_BUILD="2026-10-19";
+const APP_VERSION_LABEL=`JHC Fleet ${APP_VERSION} · ${APP_BUILD} 업데이트`;
 const ROOT_ADMIN_EMAIL="sehyun.ka@gmail.com";
 const ROOT_ADMIN_NAME="가세현";
 const ADMIN_OPERATORS=["곽봉수","빈윤정","연은주","지석근","엄지용","가세현"];
@@ -810,6 +812,7 @@ function renderLogin(msg){
     <button class="btn sec admin-login" onclick="requestAdminGoogleLogin()">Google 관리자 로그인</button>
     <p class="field-help" style="text-align:center">관리자는 등록된 본인 Google 계정으로만 접속할 수 있습니다.</p>
     <div class="note">ⓘ 접속 안내<br>${COMPANY} 임직원 전용 법인차량 관리 시스템입니다.<br>직원 ID는 이름이며, 초기 비밀번호는 총무부 안내를 확인하세요.</div>
+    <p class="field-help" style="text-align:center;margin-top:12px;font-weight:600">${APP_VERSION_LABEL}</p>
   </div>`;
 }
 let loginBusy=false;
@@ -1456,7 +1459,8 @@ async function vMy(){
     <label>새 비밀번호</label><input type="password" id="npw" autocomplete="new-password" inputmode="text">
     <p class="field-warning">영문과 숫자를 각각 1개 이상 포함해 8자리 이상 입력하세요. 특수문자는 사용할 수 없으며 영문 대·소문자는 구분됩니다.</p>
     <button class="btn sm" onclick="chMyPw()">변경</button></div>
-  <button class="btn red" onclick="logout()">로그아웃</button>`;
+  <button class="btn red" onclick="logout()">로그아웃</button>
+  <p class="field-help" style="text-align:center;margin-top:12px">${APP_VERSION_LABEL}</p>`;
 }
 async function chMyPw(){
   const cur=($("#cpw").value||"").trim(),p=($("#npw").value||"").trim();
