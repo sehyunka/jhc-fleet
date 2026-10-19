@@ -1,4 +1,4 @@
-const CACHE = 'jhc-fleet-command-v25-auth-hardening';
+const CACHE = 'jhc-fleet-command-v26-session-30d';
 const ASSETS = ['./', './index.html', './book-format.js', './manifest.json', './firebase-config.js', './icon-192.png', './icon-512.png', './logo-h.png', './fleet-login-bg.png'];
 
 self.addEventListener('install', e => {

@@ -216,6 +216,15 @@ try{
 /* ═══════════ Cloud Functions 호출 (직원 로그인·비밀번호) ═══════════ */
 const FN_BASE=`https://asia-northeast3-${(window.FIREBASE_CONFIG||{}).projectId||"jhc-fleet"}.cloudfunctions.net/`;
 let MY_PW_STATUS="";
+const SESSION_MAX_DAYS=30, PW_MAX_DAYS=90;
+function cachePwStatus(aid,status,changedAt){ try{ localStorage.setItem("jhc2_pwst_"+aid,JSON.stringify({status,changedAt:changedAt||null})); }catch(e){} }
+function cachedPwStatus(aid){ try{ return JSON.parse(localStorage.getItem("jhc2_pwst_"+aid)||"null"); }catch(e){ return null; } }
+function pwStatusFrom(status,changedAt){
+  if(status==="expired") return "expired";
+  if(status!=="changed") return "initial";
+  const t=Number(changedAt)||0;
+  return !t||Date.now()-t>PW_MAX_DAYS*86400000?"expired":"changed";
+}
 const PW_RULE_MSG="새 비밀번호는 영문과 숫자를 모두 포함해 8자 이상이어야 하며 특수문자는 사용할 수 없습니다";
 async function callFn(name,data,opts={}){
   const headers={"Content-Type":"application/json"};
@@ -622,8 +631,9 @@ function startDriveReminderMonitor(){clearInterval(reminderTimer);reminderTimer=
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt=n=>n==null||n===""?"-":Number(n).toLocaleString();
 function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",Math.max(2500,Math.min(8000,String(m).length*110)));}
-function modal(html){$("#modal-root").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">'+html+'</div></div>';}
-function closeModal(){$("#modal-root").innerHTML="";}
+let PW_GATE_OPEN=false;
+function modal(html){ if(PW_GATE_OPEN) return; $("#modal-root").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">'+html+'</div></div>';}
+function closeModal(force){ if(PW_GATE_OPEN&&force!==true) return; $("#modal-root").innerHTML=""; }
 async function vehicleTrips(plate){
   if(!canAccessVehicle(plate)) return [];
   return (await dbAll("trips")).filter(t=>t.vehicle===plate);
@@ -824,7 +834,8 @@ async function doLogin(){
     await fauth.signInWithCustomToken(result.token);
     seenNotices.clear();
     SESSION=userSession({id:result.profile.aid,...result.profile});
-    MY_PW_STATUS=result.profile.passwordStatus==="changed"?"changed":"initial";
+    MY_PW_STATUS=["changed","expired"].includes(result.profile.passwordStatus)?result.profile.passwordStatus:"initial";
+    cachePwStatus(result.profile.aid,result.profile.passwordStatus,result.profile.pwChangedAt);
     try{ await loadCore(true); }catch(e){ console.warn(e); }
     enterApp(true);
   }catch(e){
@@ -840,10 +851,16 @@ async function restoreEmployeeSession(){
   try{
     const token=await user.getIdTokenResult(),aid=token.claims.aid;
     if(token.claims.role!=="employee"||!aid) return false;
-    const [u,st]=await Promise.all([fdb.collection("users").doc(aid).get(),fdb.collection("accountStatus").doc(aid).get()]);
+    const authTime=Number(token.claims.auth_time)||0;
+    if(!authTime||Date.now()/1000-authTime>SESSION_MAX_DAYS*86400) return "expired";
+    const u=await fdb.collection("users").doc(aid).get();
+    let st=null;
+    try{ st=await fdb.collection("accountStatus").doc(aid).get(); }catch(e){ console.warn("비밀번호 상태 조회 실패 → 기기 기록 사용",e); }
     if(!u.exists) return false;
     SESSION=userSession({id:aid,...u.data()});
-    MY_PW_STATUS=st.exists&&st.data().passwordStatus==="changed"?"changed":"initial";
+    const cached=cachedPwStatus(aid);
+    MY_PW_STATUS=st&&st.exists?pwStatusFrom(st.data().passwordStatus,st.data().pwChangedAt)
+      :cached?pwStatusFrom(cached.status,cached.changedAt):"initial";
     return true;
   }catch(e){ console.warn("직원 세션 복원 실패",e); return false; }
 }
@@ -907,7 +924,7 @@ async function logout(){
   pushGatePassed=false;pushGateBusy=false;pushGateWentBackground=false;
   if(notificationPermissionWatcher) notificationPermissionWatcher.onchange=null;
   notificationPermissionWatcher=null;document.body.classList.remove("push-gated");
-  seenNotices.clear(); SESSION=null; MY_PW_STATUS=""; resetClientData(); localStorage.removeItem("jhc2_sess");
+  seenNotices.clear(); SESSION=null; MY_PW_STATUS=""; PW_GATE_OPEN=false; closeModal(true); resetClientData(); localStorage.removeItem("jhc2_sess");
   if(fauth?.currentUser){ try{await fauth.signOut();}catch(e){console.warn(e);} }
   renderLogin();
 }
@@ -944,7 +961,7 @@ async function enterApp(showNotice){
   items.push(isAdmin()?["admin","⚙","관리"]:["my","●","내 정보"]);
   $("#navbar").innerHTML=`<div class="nav-brand"><img src="icon-192.png" alt="재현하늘창 로고"><div><strong>JHC FLEET</strong><small>Fleet Command</small></div></div>`+
     items.map(i=>`<button data-v="${i[0]}" onclick="nav('${i[0]}')"><span class="nav-icon">${i[1]}</span><span class="nav-label">${i[2]}</span></button>`).join("");
-  await nav("home");
+  try{ await nav("home"); }catch(e){ console.warn("홈 화면 로드 실패",e); }
   if(!isAdmin()){
     startDriveReminderMonitor();
         startStartReminderMonitor();
@@ -1448,7 +1465,7 @@ async function chMyPw(){
   if(useFB){
     try{
       await callFn("changePassword",{current:normalizeCredential(cur,true),next:p},{auth:true});
-      MY_PW_STATUS="changed"; $("#cpw").value=""; $("#npw").value="";
+      MY_PW_STATUS="changed"; cachePwStatus(SESSION.aid,"changed",Date.now()); $("#cpw").value=""; $("#npw").value="";
       toast("비밀번호가 변경되었습니다. 영문 대·소문자는 구분됩니다");
     }catch(e){ toast(e.message||"비밀번호를 변경하지 못했습니다"); }
     return;
@@ -1461,7 +1478,8 @@ async function chMyPw(){
 }
 
   function openInitialPasswordGate(){
-    $("#modal-root").innerHTML=`<div class="modal-bg"><div class="modal"><h3>🔒 비밀번호 변경이 필요합니다</h3><p class="sub">보안 강화로 지금 사용 중인 비밀번호를 계속 사용할 수 없습니다. 새 비밀번호를 설정해야 앱을 계속 이용할 수 있습니다.</p><label>현재 비밀번호</label><input type="password" id="ipw0" autocomplete="current-password" inputmode="text"><label>새 비밀번호</label><input type="password" id="ipw1" autocomplete="new-password" inputmode="text"><label>새 비밀번호 확인</label><input type="password" id="ipw2" autocomplete="new-password" inputmode="text"><p class="field-warning">영문과 숫자를 각각 1개 이상 포함해 8자리 이상 입력하세요. 특수문자는 사용할 수 없으며 영문 대·소문자는 구분됩니다. 초기 비밀번호와 ID는 사용할 수 없습니다.</p><button class="btn" onclick="submitInitialPasswordChange()">비밀번호 변경하고 계속하기</button></div></div>`;
+    PW_GATE_OPEN=true;
+    $("#modal-root").innerHTML=`<div class="modal-bg"><div class="modal"><h3>🔒 비밀번호 변경이 필요합니다</h3><p class="sub">${MY_PW_STATUS==="expired"?`비밀번호를 사용한 지 ${PW_MAX_DAYS}일이 지났습니다. 보안을 위해 새 비밀번호로 변경해 주세요.`:"보안 강화로 지금 사용 중인 비밀번호를 계속 사용할 수 없습니다. 새 비밀번호를 설정해야 앱을 계속 이용할 수 있습니다."}</p><label>현재 비밀번호</label><input type="password" id="ipw0" autocomplete="current-password" inputmode="text"><label>새 비밀번호</label><input type="password" id="ipw1" autocomplete="new-password" inputmode="text"><label>새 비밀번호 확인</label><input type="password" id="ipw2" autocomplete="new-password" inputmode="text"><p class="field-warning">영문과 숫자를 각각 1개 이상 포함해 8자리 이상 입력하세요. 특수문자는 사용할 수 없으며 영문 대·소문자는 구분됩니다. 초기 비밀번호와 ID는 사용할 수 없습니다.</p><button class="btn" onclick="submitInitialPasswordChange()">비밀번호 변경하고 계속하기</button></div></div>`;
   }
 
 async function submitInitialPasswordChange(){
@@ -1472,7 +1490,7 @@ async function submitInitialPasswordChange(){
   if(useFB){
     try{ await callFn("changePassword",{current:normalizeCredential(cur,true),next:p1},{auth:true}); }
     catch(e){ return toast(e.message||"비밀번호를 변경하지 못했습니다"); }
-    MY_PW_STATUS="changed";
+    MY_PW_STATUS="changed"; cachePwStatus(SESSION.aid,"changed",Date.now());
   }else{
     const acc=ACCOUNTS.find(a=>a.id===SESSION.aid);
     if(!acc) return toast("계정 오류");
@@ -1480,7 +1498,7 @@ async function submitInitialPasswordChange(){
     await dbUpd("accounts",acc.id,{pw:p1,pwCaseInsensitive:false,passwordStatus:"changed"});
     await loadCore(true);
   }
-  closeModal();
+  PW_GATE_OPEN=false; closeModal(true);
   toast("비밀번호가 변경되었습니다. 영문 대·소문자는 구분됩니다");
 }
   /* ═══════════ 관리자 ═══════════ */
@@ -2185,12 +2203,13 @@ async function waitForAuthReady(){
       SESSION=null; renderLogin("관리자 인증이 만료되었습니다. Google 계정으로 다시 로그인하세요.");
     }
   }else if(user){
-    if(await restoreEmployeeSession()){
+    const restored=await restoreEmployeeSession();
+    if(restored===true){
       try{ await loadCore(true); }catch(e){ console.warn(e); }
       if(syncSessionAccount()) enterApp(true);
     }else{
       try{await fauth.signOut();}catch(e){console.warn(e);}
-      SESSION=null; renderLogin("다시 로그인해 주세요.");
+      SESSION=null; renderLogin(restored==="expired"?`보안을 위해 ${SESSION_MAX_DAYS}일마다 비밀번호를 다시 입력해야 합니다.`:"다시 로그인해 주세요.");
     }
   }else{
     renderLogin();
