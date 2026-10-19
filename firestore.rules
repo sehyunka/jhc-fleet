@@ -4,8 +4,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedInWithVerifiedEmail() {
       return request.auth != null
-        && request.auth.token.email != null
-        && request.auth.token.email_verified == true;
+        && request.auth.token.get('email', null) != null
+        && request.auth.token.get('email_verified', false) == true;
     }
 
     function rootAdmin() {
@@ -23,6 +23,27 @@ service cloud.firestore {
       return rootAdmin() || listedAdmin();
     }
 
+    // 직원은 Cloud Function(employeeLogin)이 발급한 사용자 지정 토큰으로 로그인합니다.
+    // 토큰에는 role=employee 와 본인 계정 ID(aid)가 들어 있습니다.
+    // 직원 로그인은 30일(2,592,000초) 동안만 유효합니다. 이후에는 비밀번호를 다시 입력해야 합니다.
+    function isEmployee() {
+      return request.auth != null
+        && request.auth.token.get('role', '') == 'employee'
+        && request.auth.token.get('auth_time', 0) > request.time.toMillis() / 1000 - 2592000
+        && request.auth.token.get('aid', '') is string
+        && request.auth.token.get('aid', '') != '';
+    }
+
+    // 요청자가 해당 직원 본인인지 확인합니다.
+    function isMe(aid) {
+      return isEmployee() && aid is string && request.auth.token.aid == aid;
+    }
+
+    // 관리자(Google 인증) 또는 로그인한 직원만 허용합니다. 임의의 Google 계정은 허용하지 않습니다.
+    function signedIn() {
+      return isAdmin() || isEmployee();
+    }
+
     // 가세현 최초 관리자만 다른 관리자 Google 계정을 등록·변경할 수 있습니다.
     match /adminAccess/{email} {
       allow read: if isAdmin();
@@ -38,75 +59,89 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // 직원 앱의 조회는 유지하되 관리자 설정 데이터의 변경은 Google 인증 관리자만 허용합니다.
+    // 설정·차량·공지·사용자 표시 정보는 로그인한 사용자만 읽고, 변경은 관리자만 합니다.
     match /settings/{documentId} {
-      allow read: if true;
+      allow read: if signedIn();
       allow create, update, delete: if isAdmin();
     }
     match /vehicles/{documentId} {
-      allow read: if true;
+      allow read: if signedIn();
       allow create, update, delete: if isAdmin();
     }
     match /notices/{documentId} {
-      allow read: if true;
+      allow read: if signedIn();
       allow create, update, delete: if isAdmin();
     }
+    // users: 계정(accounts)에서 복사한 비밀번호 없는 표시 정보(이름·부서·지정 차량·공용차량 권한)
     match /users/{documentId} {
-      allow read: if true;
+      allow read: if signedIn();
       allow create, update, delete: if isAdmin();
     }
 
-    // 기존 직원 자체 로그인과 비밀번호 변경 기능을 유지합니다.
-    // 관리자가 아닌 요청은 비밀번호 관련 필드만 변경할 수 있습니다.
+    // 계정 원본(비밀번호 해시 포함)은 관리자만 접근합니다. 직원 로그인·비밀번호 변경은
+    // Cloud Functions(employeeLogin / changePassword / adminSetPassword)에서만 처리합니다.
     match /accounts/{documentId} {
-      allow read: if true;
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin()
-        || request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['pw', 'pwCaseInsensitive', 'passwordStatus']);
+      allow read, write: if isAdmin();
     }
 
-    // 직원은 운행을 시작하고 본인이 사용하는 화면에서 종료 필드만 채울 수 있습니다.
+    // 직원 본인의 비밀번호 상태(initial/changed). 기록은 Cloud Functions만 합니다.
+    match /accountStatus/{aid} {
+      allow read: if isAdmin() || isMe(aid);
+      allow write: if false;
+    }
+
+    // 로그인 실패 횟수·잠금 정보는 클라이언트에서 접근할 수 없습니다.
+    match /loginFails/{documentId} {
+      allow read, write: if false;
+    }
+
+    // 직원은 본인 명의(uid)로만 운행을 시작하고, 본인 운행의 종료 필드만 채울 수 있습니다.
     // 전체 기록 수정·삭제는 Google 인증 관리자만 가능합니다.
     match /trips/{documentId} {
-      allow read, create: if true;
+      allow read: if signedIn();
+      allow create: if isAdmin() || isMe(request.resource.data.uid);
       allow update: if isAdmin()
-        || request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['endKm', 'dist', 'endDate', 'endTime', 'status',
-            'lastReportedKm', 'lastReminderResponseAt', 'reminderAction',
-            'reminderNextHour', 'reminderActionAt']);
+        || (isMe(resource.data.uid)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['endKm', 'dist', 'endDate', 'endTime', 'status',
+              'lastReportedKm', 'lastReminderResponseAt', 'reminderAction',
+              'reminderNextHour', 'reminderActionAt']));
       allow delete: if isAdmin();
     }
 
-    // 직원 계정은 Firebase Auth 대신 사내 ID/PW를 사용하므로 기기 토큰 등록만
-    // 최소 필드로 허용합니다. 토큰 전체 조회·삭제는 Google 인증 관리자만 가능합니다.
+    // 로그인한 직원은 본인 기기 토큰만 최소 필드로 등록·갱신합니다(공용 기기는 aid 재지정 허용).
+    // 토큰 전체 조회·삭제는 Google 인증 관리자만 가능합니다.
     match /pushTokens/{tokenId} {
       allow read, delete: if isAdmin();
-      allow create: if request.resource.data.keys().hasOnly(['token','aid','name','dept','active','updatedAt'])
+      allow create, update: if isMe(request.resource.data.aid)
+        && request.resource.data.keys().hasOnly(['token','aid','name','dept','active','updatedAt'])
         && request.resource.data.token is string
-        && request.resource.data.aid is string
         && request.resource.data.active == true;
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['token','name','dept','active','updatedAt'])
-        && request.resource.data.aid == resource.data.aid;
     }
 
-    // 직원의 정비 기록 등록은 유지하고, 저장 후 수정·삭제는 관리자만 허용합니다.
+    // 직원은 본인 명의(uid)의 정비 기록만 등록하고, 저장 후 수정·삭제는 관리자만 허용합니다.
     match /maintenance/{documentId} {
-      allow read, create: if true;
+      allow read: if signedIn();
+      allow create: if isAdmin() || isMe(request.resource.data.uid);
       allow update, delete: if isAdmin();
     }
 
     // 휴가(연차) 기록입니다. 직원 본인(당일 팝업·사전 등록)과 관리자가 등록하며, 시작 알림 제외와
     // 주간 점검 제외, 운행 기록 휴가 표시에 사용합니다. 본인 등록분(by=self)은 직원이 취소할 수 있습니다.
     match /selfHolidayReports/{documentId} {
-      allow read: if true;
+      allow read: if signedIn();
       allow create: if isAdmin()
-        || (request.resource.data.keys().hasOnly(['aid','name','dept','date','reportedAt','kind','by'])
-        && request.resource.data.aid is string
-        && request.resource.data.date is string);
+        || (isMe(request.resource.data.aid)
+        && request.resource.data.keys().hasOnly(['aid','name','dept','date','reportedAt','kind','by'])
+        && request.resource.data.date is string
+        && request.resource.data.by == 'self'
+        && documentId == request.resource.data.aid + '_' + request.resource.data.date);
       allow update: if isAdmin()
-        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportedAt','kind','by']);
-      allow delete: if isAdmin() || resource.data.by == 'self';
+        || (isMe(resource.data.aid)
+        && request.resource.data.aid == resource.data.aid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportedAt','kind','by'])
+        && request.resource.data.by == 'self');
+      allow delete: if isAdmin() || (isMe(resource.data.aid) && resource.data.get('by', '') == 'self');
     }
 
     // 시작 알림(08·09·10시) 발송 이력입니다. Cloud Functions(Admin SDK)에서만

@@ -1,3 +1,12 @@
 functions/node_modules/
 firebase-debug.log
 firebase-debug.*.log
+tests/node_modules/
+functions/.env
+functions/.env.*
+.env
+.env.*
+*serviceAccount*.json
+*-adminsdk-*.json
+firestore-debug.log
+ui-debug.log
