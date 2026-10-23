@@ -5,7 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 const { initializeTestEnvironment, assertFails, assertSucceeds } = require("@firebase/rules-unit-testing");
-const { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, serverTimestamp } = require("firebase/firestore");
+const { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, serverTimestamp, increment } = require("firebase/firestore");
 
 const PROJECT = "demo-jhc";
 let env, passed = 0, failed = 0;
@@ -152,6 +152,20 @@ async function test(name, fn) {
     await assertSucceeds(deleteDoc(doc(admin, "trips/t9")));
   });
   await test("관리자도 accountStatus 쓰기 거부(함수 전용)", () => assertFails(setDoc(doc(admin, "accountStatus/a1"), { passwordStatus: "changed" })));
+
+  console.log("[필수] 접속 기록(usageDaily) [usage-20261021]");
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const u = (extra = {}) => ({ day: today, aid: "a1", name: "가세현", dept: "인사총무팀", opens: increment(1), hours: { "09": increment(1) }, last: serverTimestamp(), mode: "app", device: "phone", ...extra });
+  await test("직원 본인 접속 기록 생성 허용", () => assertSucceeds(setDoc(doc(emp, `usageDaily/${today}_a1`), u(), { merge: true })));
+  await test("직원 본인 접속 기록 +1 허용", () => assertSucceeds(setDoc(doc(emp, `usageDaily/${today}_a1`), u(), { merge: true })));
+  await test("남의 aid 접속 기록 거부", () => assertFails(setDoc(doc(emp, `usageDaily/${today}_b2`), u({ aid: "b2" }), { merge: true })));
+  await test("문서 ID 날짜 불일치 거부", () => assertFails(setDoc(doc(emp, "usageDaily/2020-01-01_a1"), u(), { merge: true })));
+  await test("허용 외 필드 거부", () => assertFails(setDoc(doc(emp, `usageDaily/${today}_a1`), u({ extra: 1 }), { merge: true })));
+  await test("opens 임의값 거부", () => assertFails(setDoc(doc(emp, `usageDaily/${today}_a1`), u({ opens: 50 }), { merge: true })));
+  await test("직원 접속 기록 읽기 거부", () => assertFails(getDoc(doc(emp, `usageDaily/${today}_a1`))));
+  await test("관리자 접속 기록 읽기 허용", () => assertSucceeds(getDoc(doc(admin, `usageDaily/${today}_a1`))));
+  await test("비로그인 접속 기록 쓰기 거부", () => assertFails(setDoc(doc(anon, `usageDaily/${today}_a1`), u(), { merge: true })));
+  await test("직원 접속 기록 삭제 거부", () => assertFails(deleteDoc(doc(emp, `usageDaily/${today}_a1`))));
 
   await env.cleanup();
   console.log(`\n결과: ${passed} 통과 / ${failed} 실패`);

@@ -1,4 +1,4 @@
-const CACHE = 'jhc-fleet-command-v28-fresh-html';
+const CACHE = 'jhc-fleet-command-v29-usage';
 const ASSETS = ['./', './index.html', './book-format.js', './manifest.json', './firebase-config.js', './icon-192.png', './icon-512.png', './logo-h.png', './fleet-login-bg.png'];
 
 self.addEventListener('install', e => {
@@ -44,7 +44,7 @@ self.addEventListener('push', event => {
             : [{action:'finish',title:'운행 종료'},{action:'continue',title:'계속 운행 중'}];
     event.waitUntil(self.registration.showNotification(title,{
           body:notification.body||data.body||bodyFallback,
-          icon:'./icon-192.png',badge:'./icon-192.png',tag:`${kind}-reminder-${data.tripId||data.date||data.weekFrom||'open'}`,
+          icon:'./icon-192.png',badge:'./badge-96.png',tag:`${kind}-reminder-${data.tripId||data.date||data.weekFrom||'open'}`,
           renotify:true,requireInteraction:kind!=='weekly',vibrate:[180,100,180],data:Object.assign({kind},data),
           actions
     }));

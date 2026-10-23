@@ -945,8 +945,29 @@ function updateShellMeta(v){
   const m=PAGE_META[v]||PAGE_META.home;
   $("#pageTitle").textContent=m[0]; $("#pageDesc").textContent=m[1];
 }
+// [usage-20261021] 접속 기록: 직원이 앱을 열 때(기기당 10분 1회) 하루 1문서에 횟수·시간대만 기록. 위치·입력값 없음. 실패해도 화면은 계속.
+const USAGE_GAP_MS=10*60*1000;
+function recordUsage(){
+  try{
+    if(!useFB||isAdmin()||!SESSION||!SESSION.aid) return;
+    const k="jhc.usage.last."+SESSION.aid;
+    let prev=0; try{ prev=+(localStorage.getItem(k)||0); }catch(e){}
+    if(Date.now()-prev<USAGE_GAP_MS) return;
+    try{ localStorage.setItem(k,String(Date.now())); }catch(e){}
+    const d=new Date(Date.now()+9*3600e3),day=d.toISOString().slice(0,10),hh=String(d.getUTCHours()).padStart(2,"0");
+    const FV=firebase.firestore.FieldValue;
+    const standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
+    fdb.collection("usageDaily").doc(day+"_"+SESSION.aid).set({
+      day,aid:SESSION.aid,name:String(SESSION.name||"").slice(0,40),dept:String(SESSION.dept||"").slice(0,40),
+      opens:FV.increment(1),hours:{[hh]:FV.increment(1)},last:FV.serverTimestamp(),
+      mode:standalone?"app":"browser",device:/Mobi|Android|iPhone|iPad/.test(navigator.userAgent)?"phone":"pc"
+    },{merge:true}).catch(e=>console.warn("접속 기록 실패(무시)",e));
+  }catch(e){ console.warn("접속 기록 실패(무시)",e); }
+}
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&document.body.classList.contains("inapp")) recordUsage(); });
 async function enterApp(showNotice){
   document.body.classList.add("inapp");
+  if(!isAdmin()) recordUsage();
   $("#login").style.display="none";
   $("#uName").textContent=isAdmin()?`${SESSION.operatorName||"미확인"} · 관리자`:SESSION.name;
   $("#uDept").textContent=SESSION.dept||"재현하늘창";
