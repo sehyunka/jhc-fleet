@@ -1,0 +1,15 @@
+{
+  "spec": "jhc-app/v1",
+  "appId": "fleet",
+  "name": "차량관제",
+  "version": "2026.11.14-1",
+  "entry": "https://sehyunka.github.io/jhc-fleet/",
+  "icon": "https://sehyunka.github.io/jhc-fleet/icon-192.png",
+  "menus": [
+    { "id": "home", "title": "법인차량", "path": "/", "roles": ["사용자", "부서장", "관리자", "마스터"] }
+  ],
+  "summaryUrl": "https://asia-northeast3-jhc-fleet.cloudfunctions.net/jhcSummaryFleet",
+  "ticketExchangeUrl": "https://asia-northeast3-jhc-fleet.cloudfunctions.net/jhcTicketExchangeFleet",
+  "emergencyLogin": "https://sehyunka.github.io/jhc-fleet/",
+  "frameable": true
+}

@@ -14,6 +14,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- 재현하늘창 통합앱 공통 부품 (주소 그대로 불러 씀, 복사 금지 — 통합 연결 규격 v1 4장) -->
+<script src="https://jhc-one.web.app/sdk/v1.js"></script>
 <style>
 :root{--navy:#0b1f33;--navy-2:#133451;--navy-3:#1c4b6f;--teal:#12b3a8;--teal-soft:#e7f7f5;--lime:#9acb16;--bg:#f2f5f7;--card:#fff;--panel:#f7f9fa;--txt:#14212d;--mut:#71808e;--red:#c73e45;--grn:#16845b;--amb:#b87312;--bd:#dfe5e8;--shadow:0 12px 32px rgba(17,42,65,.08)}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -103,6 +105,8 @@ nav button{position:relative;display:flex;align-items:center;gap:12px;width:100%
 @media(max-width:900px){body.push-gated{padding-bottom:0}body.push-gated nav{display:none}body.push-gated main{padding-bottom:30px}}
 @media(max-width:620px){.metrics-grid{grid-template-columns:1fr 1fr;gap:10px}.metric-card{min-height:112px;padding:14px}.metric-value{font-size:24px;margin-top:11px}.fleet-grid{grid-template-columns:1fr}.form-grid,.filter-bar{grid-template-columns:1fr}.form-grid .span-2{grid-column:auto}.row{flex-direction:column;gap:0}.stat{grid-template-columns:1fr 1fr}.card,.panel{padding:16px;border-radius:14px}.dashboard-grid{gap:12px}#login{justify-content:center;align-items:flex-start;padding:clamp(28px,8vh,72px) 16px 24px;background-position:34% center}#login::before{background:rgba(244,250,253,.34)}.login-card{max-width:420px;padding:30px 22px 24px;border-radius:18px}.login-card img{max-width:200px}.reminder-trip{grid-template-columns:1fr 1fr}.reminder-trip>div:first-child{grid-column:1/-1}.reminder-choices{grid-template-columns:1fr}.reminder-actions{grid-template-columns:1fr}.reminder-actions .btn{width:100%}.push-gate-wrap{min-height:calc(100vh - 110px);padding:8px 0 30px}.push-gate-card{padding:24px 18px;border-radius:16px}.push-gate-icon{width:56px;height:56px;border-radius:17px}.push-gate-card h2{font-size:20px}}
 @media print{header,nav,.tabs,#toast,.stat,button{display:none!important}body,body.inapp{padding:0;background:#fff}.card,.panel{box-shadow:none;border:0}main{padding:0;max-width:none}#aBody>.card:first-child{display:none}}
+/* 재현하늘창 통합앱 안에서 열렸을 때 상단 "← 재현하늘창" 막대(44px) 아래로 */
+header{top:var(--jhc-backbar-h,0px)}@media(min-width:901px){nav{top:var(--jhc-backbar-h,0px)}}
 </style>
 </head>
 <body>
@@ -197,7 +201,9 @@ const MAINT_ITEMS=[
 {name:"미션오일",km:80000,mo:0},{name:"냉각수",km:40000,mo:24},{name:"배터리",km:60000,mo:36}];
 const COMPANY="재현하늘창";
 const INITIAL_EMPLOYEE_PASSWORD="1234";
-const APP_VERSION="v3.1", APP_BUILD="2026-10-19";
+const APP_VERSION="v3.2", APP_BUILD="2026-11-14";
+/* 재현하늘창 통합앱 연결 (규격: C:\AI Test\JHC Korea_통합앱\contract\통합연결규격-v1.md) */
+const JHC_EXCHANGE_URL="https://asia-northeast3-jhc-fleet.cloudfunctions.net/jhcTicketExchangeFleet";
 const APP_VERSION_LABEL=`JHC Fleet ${APP_VERSION} · ${APP_BUILD} 업데이트`;
 const ROOT_ADMIN_EMAIL="sehyun.ka@gmail.com";
 const ROOT_ADMIN_NAME="가세현";
@@ -847,6 +853,26 @@ async function doLogin(){
 }
 function resetClientData(){
   DATA_CACHE.clear(); CORE_LOADED_AT=0; ACCOUNTS=[]; VEHICLES=[]; USERS_MIRROR_SIG="";
+}
+/* 통합앱에서 출입권(#jhc_ticket)과 함께 열리면 다시 로그인하지 않고 들어간다. 실패하면 기존 로그인 화면 그대로(비상 경로) */
+async function jhcShellLogin(){
+  if(!useFB||!window.JHC) return false;
+  const t=JHC.readTicket();
+  if(!t) return false;
+  try{
+    const r=await JHC.exchange(JHC_EXCHANGE_URL,t);
+    if(!r||!r.ok||!r.customToken) { toast("재현하늘창 통합 로그인에 실패했습니다. 아이디로 로그인해 주세요"); return false; }
+    resetClientData();
+    await fauth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    await fauth.signInWithCustomToken(r.customToken);
+    seenNotices.clear();
+    SESSION=userSession({id:r.profile.aid,...r.profile});
+    MY_PW_STATUS="changed"; // 통합앱 비밀번호로 들어옴 — 이 앱 비밀번호 변경 안내는 띄우지 않음
+    try{ await loadCore(true); }catch(e){ console.warn(e); }
+    try{ JHC.logUsage("open"); }catch(e){}
+    enterApp(true);
+    return true;
+  }catch(e){ console.warn("jhcShellLogin",e); return false; }
 }
 async function restoreEmployeeSession(){
   const user=fauth?.currentUser;
@@ -2217,7 +2243,9 @@ async function waitForAuthReady(){
   else{ try{ await ensureSeed(); await loadCore(); }catch(e){ console.warn(e); } loadSession(); }
   await waitForAuthReady();
   const user=useFB?fauth.currentUser:null;
-  if(!useFB){
+  if(useFB&&await jhcShellLogin()){
+    /* 재현하늘창 통합앱에서 들어옴 */
+  }else if(!useFB){
     if(SESSION) enterApp(true); else renderLogin();
   }else if(user&&user.email){
     if(await restoreAdminSession()){
@@ -2239,6 +2267,7 @@ async function waitForAuthReady(){
   }else{
     renderLogin();
   }
+  try{ if(window.JHC) JHC.mountBackBar(); }catch(e){}
   if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(reg=>serviceWorkerRegistration=reg).catch(()=>{});
 })();
 document.addEventListener("visibilitychange",()=>{
