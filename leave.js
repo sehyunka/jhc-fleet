@@ -58,8 +58,30 @@
      console.warn("휴가 저장 실패",e); localStorage.removeItem(holidaySelfReportKey());
      closeModal(); return toast("휴가 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.");
    }
-   closeModal(); toast("오늘은 휴가로 기록했습니다. 이후 시작 알림이 표시되지 않으며 운행 기록에 휴가로 표시됩니다.");
+   closeModal(); toast("오늘은 휴가로 기록했습니다. 오늘은 시작·종료 알림이 표시되지 않으며 운행 기록에 휴가로 표시됩니다.");
+   try{
+     var ot=openTrip((await dbAll("trips")).filter(function(t){return t.uid===SESSION.aid;}));
+     if(ot&&ot.date<todayStr()) setTimeout(function(){ toast(ot.date+" 시작한 "+ot.vehicle+" 운행이 아직 종료되지 않았습니다. 다음 출근일에 종료 KM을 입력해 주세요."); },3500);
+   }catch(e){}
  };
+  /* 1-2) 휴가일에는 운행 종료 알림도 표시하지 않음 (2026-11-19 수정)
+     - 기존: 시작 알림만 휴가를 확인 → 전날 종료하지 않은 운행이 있으면 휴가일 19~22시에도 종료 알림이 떴음 */
+  var _cdr=window.checkDriveReminder;
+  window.checkDriveReminder=async function(force){
+    if(SESSION&&!isAdmin()&&(force||currentReminderHour())){ if(await onLeaveToday()) return; }
+    return _cdr(force);
+  };
+  /* 1-3) 종료 알림 창: 오늘 이전에 시작한 운행이면 출발 날짜도 함께 표시 */
+  var _odr=window.openDriveReminder;
+  window.openDriveReminder=function(trip){
+    _odr.apply(this,arguments);
+    try{
+      if(trip&&trip.date&&trip.date<todayStr()){
+        var box=document.querySelector(".drive-reminder .reminder-trip > div:nth-child(2)");
+        if(box){ box.querySelector("span").textContent="출발 일시"; box.querySelector("strong").textContent=trip.date.slice(5).replace("-","/")+" "+(trip.startTime||""); }
+      }
+    }catch(e){}
+  };
   var _osr=window.openStartReminder;
   window.openStartReminder=function(h){
     _osr(h);
