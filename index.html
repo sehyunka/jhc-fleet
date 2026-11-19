@@ -526,6 +526,10 @@ async function saveDriveReminder(){
   if(!trip||!isTripDriver(trip)) return toast("운전자 본인만 처리할 수 있습니다");
   if(!km) return toast("현재 계기판 KM을 입력하세요");
   if(km<+trip.startKm) return toast("출발 KM보다 작은 값은 저장할 수 없습니다");
+  if(DRIVE_BUSY) return;
+  setDriveBusy(true);
+  try{ const latest=(await freshTrips()).find(t=>t.id===trip.id); if(!latest||!isRunningTrip(latest)){ closeModal(); toast("이미 종료된 운행입니다"); return nav(VIEW); } }
+  finally{ setDriveBusy(false); }
   if(reminderChoice==="finish"){
     if(km<=+trip.startKm) return toast("종료 KM은 출발 KM보다 커야 합니다");
     await dbUpd("trips",trip.id,{endKm:km,dist:km-(+trip.startKm),endDate:todayStr(),endTime:nowTime(),status:"완료",reminderAction:"finish",reminderActionAt:new Date().toISOString()});
@@ -1262,31 +1266,56 @@ async function renderDriveForm(){
     </div><button class="btn grn drive-start-btn" onclick="startDrive('${esc(v.plate)}',${pub})">운행 시작 기록</button></section>`;
 }
 function calcDist(s){ const e=+$("#endKm").value; $("#distView").innerHTML=e>s?`운행거리: <b>${fmt(e-s)} km</b>`:"운행거리: - km"; }
+/* 운행 시작·종료 저장 (2026-11-19 중복 방지 보강)
+   - 같은 날 여러 번 운행은 규정 제7조(매 운행마다 기록)·공용차량 때문에 허용
+   - 단, 버튼 연속 누름·지난 화면·다른 기기로 생기던 중복/겹침 기록은 막음 */
+let DRIVE_BUSY=false;
+function setDriveBusy(on){ DRIVE_BUSY=on; document.querySelectorAll(".drive-start-btn,.drive-end-btn").forEach(b=>{b.disabled=on;}); }
+async function freshTrips(){ invalidateDataCache("trips"); return dbAll("trips"); }
 async function startDrive(plate,pubRequired){
+  if(DRIVE_BUSY) return;
   if(!canAccessVehicle(plate)) return denyVehicleAccess();
   const v=visibleVehicles().find(x=>x.plate===plate); if(!v) return denyVehicleAccess();
   const dept=$("#drvDept")?$("#drvDept").value:SESSION.dept;
   const name=$("#drvName")?$("#drvName").value:SESSION.name;
-  const km=$("#startKm").value, pur=($("#purpose")?$("#purpose").value.trim():"");
+  const kmRaw=$("#startKm").value, km=Math.round(+kmRaw), pur=($("#purpose")?$("#purpose").value.trim():"");
   if(!name) return toast("이름을 선택하세요");
   const driverAccount=ACCOUNTS.find(a=>a.dept===dept&&a.name===name);
   if(pubRequired&&!canUseSharedVehicles(driverAccount)) return toast("공용차량 이용 권한이 없는 계정입니다");
-  if(!km) return toast("시작 키로수를 입력하세요");
+  if(!kmRaw||!(km>0)) return toast("시작 키로수를 입력하세요");
   if(pubRequired&&!pur) return toast("공용차량은 운행 목적을 반드시 입력해야 합니다");
-  const off=isOffday(todayStr());
-  if(off && !confirm("⚠️ 오늘은 휴무일입니다.\n사전 승인된 운행입니까?\n(휴무일 운행으로 기록되며 관리부서에 표시됩니다)")) return;
-  await dbAdd("trips",{vehicle:plate,model:v?v.model:"",dept:dept,user:name,uid:SESSION.aid,date:todayStr(),startTime:nowTime(),endTime:"",startKm:+km,endKm:null,dist:null,purpose:pur,offday:off,status:"운행중"});
-  toast(off?"⚠️ 휴무일 운행 시작 기록됨":"운행 시작 기록됨"); nav(VIEW);
+  setDriveBusy(true);
+  try{
+    const all=await freshTrips(), vt=all.filter(t=>t.vehicle===plate), ot=openTrip(vt);
+    if(ot){ toast(`${plate} 차량은 ${ot.user} 님이 ${ot.date} ${ot.startTime||""}부터 운행 중입니다. 먼저 종료해 주세요`); return nav(VIEW); }
+    const mine=openTrip(all.filter(t=>t.user===name&&t.dept===dept));
+    if(mine){ toast(`${name} 님의 ${mine.vehicle} 운행(${mine.date} ${mine.startTime||""} 출발)이 아직 종료되지 않았습니다. 먼저 종료해 주세요`); drivePlate=mine.vehicle; return nav(VIEW); }
+    const cur=lastKm(vt);
+    if(cur&&km<cur) return toast(`출발 KM은 마지막 기록(${fmt(cur)} km)보다 작을 수 없습니다`);
+    if(cur&&km-cur>1000&&!confirm(`출발 KM(${fmt(km)})이 마지막 기록(${fmt(cur)} km)보다 ${fmt(km-cur)} km 많습니다.\n계기판 숫자가 맞습니까?`)) return;
+    const off=isOffday(todayStr());
+    if(off && !confirm("⚠️ 오늘은 휴무일입니다.\n사전 승인된 운행입니까?\n(휴무일 운행으로 기록되며 관리부서에 표시됩니다)")) return;
+    await dbAdd("trips",{vehicle:plate,model:v?v.model:"",dept:dept,user:name,uid:SESSION.aid,date:todayStr(),startTime:nowTime(),endTime:"",startKm:km,endKm:null,dist:null,purpose:pur,offday:off,status:"운행중"});
+    toast(off?"⚠️ 휴무일 운행 시작 기록됨":"운행 시작 기록됨"); nav(VIEW);
+  }catch(e){ console.error(e); toast("저장에 실패했습니다. 잠시 후 다시 시도해 주세요"); }
+  finally{ setDriveBusy(false); }
 }
 async function endDrive(id,startKm){
-  const trip=(await dbAll("trips")).find(t=>t.id===id);
-  if(!trip||!canAccessVehicle(trip.vehicle)) return denyVehicleAccess();
-  if(!isAdmin()&&trip.uid!==SESSION.aid) return toast("본인이 시작한 운행만 종료할 수 있습니다");
-  const e=+$("#endKm").value;
+  if(DRIVE_BUSY) return;
+  const e=Math.round(+$("#endKm").value);
   if(!e) return toast("종료 키로수를 입력하세요");
   if(e<=startKm) return toast("종료 키로수는 시작보다 커야 합니다");
-  await dbUpd("trips",id,{endKm:e,dist:e-startKm,endDate:todayStr(),endTime:nowTime(),status:"완료"});
-  toast(`운행 종료 · ${fmt(e-startKm)} km`); nav(VIEW);
+  setDriveBusy(true);
+  try{
+    const trip=(await freshTrips()).find(t=>t.id===id);
+    if(!trip||!canAccessVehicle(trip.vehicle)) return denyVehicleAccess();
+    if(!isAdmin()&&trip.uid!==SESSION.aid) return toast("본인이 시작한 운행만 종료할 수 있습니다");
+    if(!isRunningTrip(trip)){ toast("이미 종료된 운행입니다"); return nav(VIEW); }
+    if(e-startKm>1500&&!confirm(`운행거리가 ${fmt(e-startKm)} km입니다.\n계기판 숫자가 맞습니까?`)) return;
+    await dbUpd("trips",id,{endKm:e,dist:e-startKm,endDate:todayStr(),endTime:nowTime(),status:"완료"});
+    toast(`운행 종료 · ${fmt(e-startKm)} km`); nav(VIEW);
+  }catch(err){ console.error(err); toast("저장에 실패했습니다. 잠시 후 다시 시도해 주세요"); }
+  finally{ setDriveBusy(false); }
 }
 
 /* ═══════════ 공용차량 ═══════════ */
